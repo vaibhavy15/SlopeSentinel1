@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — SlopeSentinel{% endblock %}
+
+{% block body %}
+<div id="dashboard">
+  <div class="dash-layout">
+
+    <!-- ── Sidebar ── -->
+    <aside class="sidebar">
+      <div class="sidebar-top">
+        <div class="sidebar-brand">
+          <div class="logo-icon">⛰</div>
+          SlopeSentinel
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-item active" onclick="switchPage('overview',this)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+            <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+          </svg>
+          Overview
+        </div>
+        <div class="nav-item" onclick="switchPage('map',this)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/>
+            <line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/>
+          </svg>
+          Mine Map
+        </div>
+        <div class="nav-item" onclick="switchPage('upload',this)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/>
+            <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+          </svg>
+          Upload Data
+        </div>
+        <div class="nav-item" onclick="switchPage('alerts',this)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+          </svg>
+          Alerts
+          <span class="alert-badge">1</span>
+        </div>
+
+        {% if session.get('role') == 'admin' %}
+        <div class="nav-item" style="margin-top:8px">
+          <a href="{{ url_for('admin_panel') }}" style="display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none;width:100%">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+            </svg>
+            Admin Panel
+          </a>
+        </div>
+        {% endif %}
+      </nav>
+
+      <div class="sidebar-bottom">
+        <!-- Role badge -->
+        <div class="role-chip role-{{ user.role }}">
+          {{ '🛡 Admin' if user.role == 'admin' else '👷 Engineer' }}
+        </div>
+        <div class="user-row">
+          <div class="user-avatar">{{ user.full_name[:2].upper() }}</div>
+          <div class="user-info">
+            <div class="user-name">{{ user.full_name }}</div>
+            <div class="user-role">{{ user.email }}</div>
+          </div>
+        </div>
+        <a href="{{ url_for('logout') }}" class="btn-logout">← Sign Out</a>
+      </div>
+    </aside>
+
+    <!-- ── Main panel ── -->
+    <main class="main-panel">
+
+      <!-- OVERVIEW -->
+      <div class="page active" id="page-overview">
+        <div class="page-header">
+          <div class="page-title">
+            <h2>System Overview</h2>
+            <p>Real-time rockfall risk assessment for all mine sectors.</p>
+          </div>
+          <div class="header-actions">
+            <button class="btn-secondary">⬇ Export Report</button>
+            <button class="btn-new">+ New Analysis</button>
+          </div>
+        </div>
+        <div class="stats-row">
+          <div class="stat-card"><div class="stat-info"><span class="stat-label">Active Sensors</span><span class="stat-value">124</span><span class="stat-delta up">+2% from last month</span></div><div class="stat-icon">⚡</div></div>
+          <div class="stat-card"><div class="stat-info"><span class="stat-label">Monitored Sites</span><span class="stat-value">12</span><span class="stat-delta neutral">Stable</span></div><div class="stat-icon">📍</div></div>
+          <div class="stat-card"><div class="stat-info"><span class="stat-label">Safe Zones</span><span class="stat-value">88%</span><span class="stat-delta up">+5% from last month</span></div><div class="stat-icon">🛡</div></div>
+          <div class="stat-card"><div class="stat-info"><span class="stat-label">Critical Alerts</span><span class="stat-value">3</span><span class="stat-delta down">-1 from last month</span></div><div class="stat-icon">🚨</div></div>
+        </div>
+        <div class="charts-row">
+          <div class="chart-card"><h3>Monthly Prediction Trends</h3><p class="chart-sub">Historical risk monitoring timeline</p><canvas id="lineChart" height="200"></canvas></div>
+          <div class="chart-card"><h3>Risk Distribution</h3><p class="chart-sub">Overall prediction breakdown</p><canvas id="donutChart" height="200"></canvas></div>
+        </div>
+        <div class="bottom-row">
+          <div class="info-card"><h3>Latest Incident Reports</h3><p>Historical data visualization will be displayed here as more analyses are completed.</p></div>
+          <div class="info-card"><h3>Live Sensor Stream</h3><p>Integration for real-time geotechnical sensor data coming soon.</p></div>
+        </div>
+      </div>
+
+      <!-- MINE MAP -->
+      <div class="page" id="page-map">
+        <div class="map-layout">
+          <div class="map-area">
+            <div class="map-header">
+              <div><h2>Geospatial Mine Visualization</h2><p>Interactive risk mapping across all pit sectors.</p></div>
+              <div class="legend">
+                <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div>Safe</div>
+                <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div>Caution</div>
+                <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div>Critical</div>
+              </div>
+            </div>
+            <div class="map-canvas">
+              <div class="map-controls"><div class="map-btn">⊞</div><div class="map-btn">⛶</div><div class="map-btn">➤</div></div>
+              <svg class="mine-svg" viewBox="0 0 700 420" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <radialGradient id="tg" cx="50%" cy="50%"><stop offset="0%" stop-color="#1a1d27"/><stop offset="100%" stop-color="#0a0c10"/></radialGradient>
+                  <filter id="glow"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+                </defs>
+                <rect width="700" height="420" fill="url(#tg)"/>
+                <g stroke="rgba(255,255,255,0.04)" stroke-width="1">
+                  <line x1="0" y1="60" x2="700" y2="60"/><line x1="0" y1="120" x2="700" y2="120"/><line x1="0" y1="180" x2="700" y2="180"/><line x1="0" y1="240" x2="700" y2="240"/><line x1="0" y1="300" x2="700" y2="300"/><line x1="0" y1="360" x2="700" y2="360"/>
+                  <line x1="100" y1="0" x2="100" y2="420"/><line x1="200" y1="0" x2="200" y2="420"/><line x1="300" y1="0" x2="300" y2="420"/><line x1="400" y1="0" x2="400" y2="420"/><line x1="500" y1="0" x2="500" y2="420"/><line x1="600" y1="0" x2="600" y2="420"/>
+                </g>
+                <ellipse cx="350" cy="210" rx="280" ry="170" fill="none" stroke="rgba(124,111,255,0.2)" stroke-width="1.5" stroke-dasharray="6 4"/>
+                <ellipse cx="350" cy="210" rx="200" ry="115" fill="none" stroke="rgba(124,111,255,0.15)" stroke-width="1" stroke-dasharray="4 4"/>
+                <ellipse cx="350" cy="210" rx="120" ry="65" fill="none" stroke="rgba(124,111,255,0.1)" stroke-width="1" stroke-dasharray="3 4"/>
+                <path d="M80 380 Q200 320 350 280 Q490 240 620 290" stroke="rgba(255,255,255,0.08)" stroke-width="3" fill="none" stroke-dasharray="8 4"/>
+                <g onclick="selectSite('North Pit Alpha','safe','45.2','-73.8','85','12','Normal')" class="map-marker" filter="url(#glow)"><circle cx="220" cy="120" r="12" fill="rgba(34,197,94,0.2)" stroke="#22c55e" stroke-width="2"/><circle cx="220" cy="120" r="5" fill="#22c55e"/><text x="220" y="105" text-anchor="middle" fill="#22c55e" font-size="10">N-Alpha</text></g>
+                <g onclick="selectSite('West Bench B2','safe','45.1','-74.0','78','8','Normal')" class="map-marker" filter="url(#glow)"><circle cx="130" cy="230" r="12" fill="rgba(34,197,94,0.2)" stroke="#22c55e" stroke-width="2"/><circle cx="130" cy="230" r="5" fill="#22c55e"/><text x="130" y="215" text-anchor="middle" fill="#22c55e" font-size="10">W-B2</text></g>
+                <g onclick="selectSite('South Rim S1','safe','44.9','-73.7','91','15','Normal')" class="map-marker" filter="url(#glow)"><circle cx="350" cy="340" r="12" fill="rgba(34,197,94,0.2)" stroke="#22c55e" stroke-width="2"/><circle cx="350" cy="340" r="5" fill="#22c55e"/><text x="350" y="325" text-anchor="middle" fill="#22c55e" font-size="10">S-Rim</text></g>
+                <g onclick="selectSite('East Corridor C3','caution','45.3','-73.6','58','22','Elevated')" class="map-marker" filter="url(#glow)"><circle cx="530" cy="150" r="13" fill="rgba(249,115,22,0.2)" stroke="#f97316" stroke-width="2"/><circle cx="530" cy="150" r="5" fill="#f97316"/><text x="530" y="135" text-anchor="middle" fill="#f97316" font-size="10">E-C3</text></g>
+                <g onclick="selectSite('Central Zone CZ','caution','45.2','-73.9','62','19','Elevated')" class="map-marker" filter="url(#glow)"><circle cx="350" cy="210" r="13" fill="rgba(249,115,22,0.2)" stroke="#f97316" stroke-width="2"/><circle cx="350" cy="210" r="5" fill="#f97316"/><text x="350" y="195" text-anchor="middle" fill="#f97316" font-size="10">CZ</text></g>
+                <g onclick="selectSite('Eastern Haul Road','critical','45.4','-73.5','23','41','CRITICAL')" class="map-marker" filter="url(#glow)"><circle cx="590" cy="270" r="14" fill="rgba(239,68,68,0.25)" stroke="#ef4444" stroke-width="2.5"/><circle cx="590" cy="270" r="6" fill="#ef4444"/><text x="590" y="253" text-anchor="middle" fill="#ef4444" font-size="10" font-weight="bold">E-Haul ⚠</text></g>
+              </svg>
+            </div>
+          </div>
+          <div class="site-panel">
+            <h3>Site Analysis</h3>
+            <div id="no-site-msg" class="no-site"><span style="font-size:28px">ℹ</span><span>No site selected</span></div>
+            <div class="site-detail" id="site-detail-panel">
+              <div class="site-name" id="sd-name"></div>
+              <div id="sd-badge" class="risk-badge"></div>
+              <div class="coords" id="sd-coords"></div>
+              <div class="stat-mini"><span class="stat-mini-label">Safe Score</span><span class="stat-mini-val" id="sd-safe"></span></div>
+              <div class="stat-mini"><span class="stat-mini-label">Risk Index</span><span class="stat-mini-val" id="sd-risk"></span></div>
+              <div class="stat-mini"><span class="stat-mini-label">Stability</span><span class="stat-mini-val" id="sd-stab"></span></div>
+              <div class="stat-mini"><span class="stat-mini-label">Last Updated</span><span class="stat-mini-val">2 min ago</span></div>
+              <div class="stat-mini"><span class="stat-mini-label">Sensors Active</span><span class="stat-mini-val">8</span></div>
+            </div>
+            <div style="padding:16px 20px;border-top:1px solid var(--border);margin-top:auto">
+              <p style="color:var(--muted);font-size:12px">COORDINATES</p>
+              <p id="sd-coords2" style="color:var(--muted);font-size:12px;font-style:italic;margin-top:6px">Select a point to see location data</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- UPLOAD -->
+      <div class="page" id="page-upload">
+        <div class="page-header"><div class="page-title"><h2>Upload Mine Data</h2><p>Upload geotechnical datasets in CSV format for AI risk prediction.</p></div></div>
+        <div class="upload-page">
+          <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()" ondragover="dragOver(event)" ondragleave="dragLeave()" ondrop="dropFile(event)">
+            <div class="upload-icon">⬆</div>
+            <h3>Drop your CSV file here</h3>
+            <p>Make sure your file includes columns for slope angle, rainfall, rock density, and other required parameters.</p>
+            <button class="btn-select" onclick="event.stopPropagation();document.getElementById('fileInput').click()">Select File</button>
+            <input type="file" id="fileInput" accept=".csv" style="display:none" onchange="handleFile(this)" />
+          </div>
+          <div class="progress-area" id="progressArea">
+            <p style="font-size:13px;font-weight:500">Processing <span id="filename"></span>…</p>
+            <div class="progress-bar-wrap"><div class="progress-bar" id="progressBar"></div></div>
+            <p class="upload-status" id="uploadStatus">Uploading…</p>
+          </div>
+          <div class="results-table" id="resultsTable">
+            <p class="results-title">Prediction Results</p>
+            <div class="table-wrap"><table><thead><tr><th>Site ID</th><th>Slope Angle</th><th>Rainfall (mm)</th><th>Rock Density</th><th>Risk Score</th><th>Prediction</th></tr></thead><tbody id="resultsBody"></tbody></table></div>
+          </div>
+          <div class="upload-features">
+            <div class="upload-feat"><div class="uf-icon purple">✓</div><div><h4>XGBoost Optimized</h4><p>Predictions powered by highly accurate, trained gradient boosting models.</p></div></div>
+            <div class="upload-feat"><div class="uf-icon cyan">!</div><div><h4>Interpretability</h4><p>Each result includes feature importance scores for geological clarity.</p></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ALERTS -->
+      <div class="page" id="page-alerts">
+        <div class="page-header"><div class="page-title"><h2>Security Alerts</h2><p>Automated AI risk detection event log.</p></div></div>
+        <div class="alerts-page">
+          <div class="alerts-header-row"><div class="alerts-count">1 Total Alerts</div></div>
+          <div class="alert-item high">
+            <div class="alert-icon-wrap high">🚨</div>
+            <div class="alert-body">
+              <div class="alert-title-row"><span class="alert-title">Critical Rockfall Warning</span><div class="alert-meta"><span>📅 04/03/2026</span><span>🕐 22:00:09</span></div></div>
+              <p class="alert-desc">High risk detected at Eastern Haul Road! Immediate inspection required.</p>
+              <div class="alert-tags"><span class="tag">ID: 3</span><span class="tag severity-high">Severity: High</span><a class="alert-view" onclick="viewAlertDetails()">View Details ›</a></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script>initCharts();</script>
+{% endblock %}

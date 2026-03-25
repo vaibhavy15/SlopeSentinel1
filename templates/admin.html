@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Admin Panel — SlopeSentinel{% endblock %}
+
+{% block body %}
+<div id="dashboard">
+  <div class="dash-layout">
+
+    <aside class="sidebar">
+      <div class="sidebar-top">
+        <div class="sidebar-brand"><div class="logo-icon">⛰</div>SlopeSentinel</div>
+      </div>
+      <nav class="sidebar-nav">
+        <div class="nav-item"><a href="{{ url_for('dashboard') }}" style="display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none;width:100%">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          Dashboard
+        </a></div>
+        <div class="nav-item active">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+          User Management
+        </div>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="role-chip role-admin">🛡 Admin</div>
+        <div class="user-row">
+          <div class="user-avatar">{{ session.user_name[:2].upper() }}</div>
+          <div class="user-info">
+            <div class="user-name">{{ session.user_name }}</div>
+            <div class="user-role">{{ session.email }}</div>
+          </div>
+        </div>
+        <a href="{{ url_for('logout') }}" class="btn-logout">← Sign Out</a>
+      </div>
+    </aside>
+
+    <main class="main-panel">
+      <div style="padding:28px 32px;">
+
+        <div class="page-header" style="padding:0;margin-bottom:28px">
+          <div class="page-title">
+            <h2>User Management</h2>
+            <p>View and manage all registered SlopeSentinel accounts.</p>
+          </div>
+        </div>
+
+        <!-- Flash messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}{% for c,m in messages %}
+            <div class="flash flash-{{ c }}" style="margin-bottom:16px">{{ m }}</div>
+          {% endfor %}{% endif %}
+        {% endwith %}
+
+        <!-- Users table -->
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Full Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Last Login</th>
+                <th>Joined</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for u in users %}
+              <tr id="user-row-{{ u.id }}">
+                <td style="color:var(--muted);font-family:monospace">{{ u.id }}</td>
+                <td>{{ u.full_name }}</td>
+                <td style="font-family:monospace;font-size:12px">{{ u.email }}</td>
+                <td>
+                  <span class="risk-pill {{ 'critical' if u.role == 'admin' else 'safe' }}">
+                    {{ u.role.capitalize() }}
+                  </span>
+                </td>
+                <td id="status-{{ u.id }}">
+                  <span class="risk-pill {{ 'safe' if u.is_active else 'critical' }}">
+                    {{ 'Active' if u.is_active else 'Inactive' }}
+                  </span>
+                </td>
+                <td style="color:var(--muted);font-size:12px">
+                  {{ u.last_login.strftime('%d %b %Y %H:%M') if u.last_login else 'Never' }}
+                </td>
+                <td style="color:var(--muted);font-size:12px">
+                  {{ u.created_at.strftime('%d %b %Y') }}
+                </td>
+                <td>
+                  {% if u.id != session.user_id %}
+                  <button class="btn-secondary" style="padding:5px 12px;font-size:12px"
+                          onclick="toggleUser({{ u.id }})">
+                    <span id="toggle-label-{{ u.id }}">
+                      {{ 'Deactivate' if u.is_active else 'Activate' }}
+                    </span>
+                  </button>
+                  {% else %}
+                  <span style="color:var(--muted);font-size:12px">You</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+async function toggleUser(userId) {
+  const res  = await fetch(`/api/users/${userId}/toggle`, { method: 'POST' });
+  const data = await res.json();
+  if (data.error) { alert(data.error); return; }
+
+  const isActive = data.is_active;
+  document.getElementById(`status-${userId}`).innerHTML =
+    `<span class="risk-pill ${isActive ? 'safe' : 'critical'}">${isActive ? 'Active' : 'Inactive'}</span>`;
+  document.getElementById(`toggle-label-${userId}`).textContent =
+    isActive ? 'Deactivate' : 'Activate';
+}
+</script>
+{% endblock %}

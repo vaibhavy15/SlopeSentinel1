@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}Login — SlopeSentinel{% endblock %}
+
+{% block body %}
+<div id="auth-page">
+
+  <!-- Animated background -->
+  <div class="auth-bg"></div>
+  <div class="auth-grid"></div>
+
+  <div class="auth-wrapper">
+
+    <!-- Logo -->
+    <div class="auth-logo">
+      <div class="auth-logo-icon">⛰</div>
+      <h2>Welcome Back</h2>
+      <p>Secure access to the SlopeSentinel monitoring portal.</p>
+    </div>
+
+    <!-- Role tabs -->
+    <div class="tab-row">
+      <button class="tab-btn {% if request.form.get('role_tab','engineer') == 'engineer' %}active{% endif %}"
+              onclick="setRoleTab(this,'engineer')" type="button">
+        👷 Engineer/Miner
+      </button>
+      <button class="tab-btn {% if request.form.get('role_tab') == 'admin' %}active{% endif %}"
+              onclick="setRoleTab(this,'admin')" type="button">
+        🛡 Administrator
+      </button>
+    </div>
+
+    <!-- Flash messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <!-- Error banner -->
+    {% if error %}
+      <div class="flash flash-danger">
+        <span class="flash-icon">⚠</span> {{ error }}
+      </div>
+    {% endif %}
+
+    <!-- Login form -->
+    <form class="auth-form" method="POST" action="{{ url_for('login') }}" novalidate>
+
+      <!-- Hidden role field — updated by JS when tab is clicked -->
+      <input type="hidden" name="role_tab" id="roleTabInput"
+             value="{{ request.form.get('role_tab', 'engineer') }}" />
+
+      <h3>Login</h3>
+      <p class="sub">Enter your credentials to access your mining sector data.</p>
+
+      <!-- Email -->
+      <div class="field">
+        <label for="email">Work Email</label>
+        <div class="input-wrap">
+          <span class="input-icon">✉</span>
+          <input
+            type="email"
+            id="email"
+            name="email"
+            placeholder="name@mine-site.com"
+            value="{{ request.form.get('email', '') }}"
+            autocomplete="email"
+            required
+          />
+        </div>
+        <span class="field-err" id="emailErr"></span>
+      </div>
+
+      <!-- Password -->
+      <div class="field">
+        <label for="password">
+          Password
+          <a href="#" tabindex="-1">Forgot password?</a>
+        </label>
+        <div class="input-wrap">
+          <span class="input-icon">🔒</span>
+          <input
+            type="password"
+            id="password"
+            name="password"
+            placeholder="••••••••"
+            autocomplete="current-password"
+            required
+          />
+          <button type="button" class="toggle-pw" onclick="togglePassword()" tabindex="-1">
+            <span id="pwEye">👁</span>
+          </button>
+        </div>
+        <span class="field-err" id="pwErr"></span>
+      </div>
+
+      <!-- Remember me -->
+      <div class="remember-row">
+        <label class="checkbox-label">
+          <input type="checkbox" name="remember_me"
+                 {% if request.form.get('remember_me') %}checked{% endif %} />
+          <span class="checkbox-custom"></span>
+          Keep me signed in for 7 days
+        </label>
+      </div>
+
+      <!-- Submit -->
+      <button type="submit" class="btn-signin" id="signinBtn">
+        <span class="btn-text">Sign In</span>
+        <span class="btn-spinner" id="spinner" style="display:none">⏳</span>
+      </button>
+        <div class="divider">OR</div>
+<a href="{{ url_for('register') }}" class="btn-anon">
+  Create new account
+</a>
+
+      <!-- Anonymous access -->
+      <div class="divider">OR CONTINUE AS</div>
+      <a href="{{ url_for('dashboard') }}" class="btn-anon">Anonymous Viewer Access</a>
+
+    </form>
+
+  </div><!-- /auth-wrapper -->
+
+  <!-- Back to landing -->
+  <a href="{{ url_for('index') }}" class="back-link">← Back to landing page</a>
+
+</div><!-- /auth-page -->
+
+<script>
+  /* ---- Tab switcher ---- */
+  function setRoleTab(btn, role) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('roleTabInput').value = role;
+  }
+
+  /* ---- Password visibility toggle ---- */
+  function togglePassword() {
+    const input = document.getElementById('password');
+    const eye   = document.getElementById('pwEye');
+    if (input.type === 'password') {
+      input.type = 'text';
+      eye.textContent = '🙈';
+    } else {
+      input.type = 'password';
+      eye.textContent = '👁';
+    }
+  }
+
+  /* ---- Client-side validation + loading spinner ---- */
+  document.querySelector('.auth-form').addEventListener('submit', function(e) {
+    let valid = true;
+
+    const email  = document.getElementById('email');
+    const pw     = document.getElementById('password');
+    const emailErr = document.getElementById('emailErr');
+    const pwErr    = document.getElementById('pwErr');
+
+    emailErr.textContent = '';
+    pwErr.textContent    = '';
+
+    if (!email.value.trim()) {
+      emailErr.textContent = 'Email is required.';
+      valid = false;
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value)) {
+      emailErr.textContent = 'Please enter a valid email.';
+      valid = false;
+    }
+
+    if (!pw.value) {
+      pwErr.textContent = 'Password is required.';
+      valid = false;
+    }
+
+    if (!valid) { e.preventDefault(); return; }
+
+    /* Show spinner */
+    document.getElementById('spinner').style.display = 'inline';
+    document.querySelector('.btn-text').textContent = 'Signing in…';
+    document.getElementById('signinBtn').disabled = true;
+  });
+</script>
+{% endblock %}
