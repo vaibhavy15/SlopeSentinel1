@@ -1,0 +1,13 @@
+<link rel="stylesheet" href="/static/style.css">
+
+<div class="dashboard">
+<h2>Alerts</h2>
+
+<ul>
+{% for a in alerts %}
+<li>{{a.msg}} - <b>{{a.level}}</b></li>
+{% endfor %}
+</ul>
+
+<a href="/dashboard">Back</a>
+</div>

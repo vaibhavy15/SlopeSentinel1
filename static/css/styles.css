@@ -316,3 +316,68 @@ tr:last-child td { border-bottom: none; }
   .bottom-row      { grid-template-columns: 1fr; }
   .upload-features { grid-template-columns: 1fr; }
 }
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+}
+
+.admin-table th, .admin-table td {
+  padding: 12px;
+  border-bottom: 1px solid #2a2a2a;
+  text-align: left;
+}
+
+.admin-table th {
+  background: #1a1a1a;
+}
+
+.badge {
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.badge.success {
+  background: #22c55e;
+  color: white;
+}
+
+.badge.warning {
+  background: #f97316;
+  color: white;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn {
+  border: none;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.btn.approve {
+  background: #22c55e;
+  color: white;
+}
+
+.btn.reject {
+  background: #f97316;
+  color: white;
+}
+
+.btn.delete {
+  background: #ef4444;
+  color: white;
+}
+
+.card {
+  background: #111;
+  padding: 20px;
+  border-radius: 10px;
+}

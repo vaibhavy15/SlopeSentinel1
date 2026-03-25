@@ -47,7 +47,7 @@
 
         {% if session.get('role') == 'admin' %}
         <div class="nav-item" style="margin-top:8px">
-          <a href="{{ url_for('admin_panel') }}" style="display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none;width:100%">
+          <a href="{{ url_for('admin') }}" style="display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none;width:100%">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
             </svg>
@@ -212,3 +212,62 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script>initCharts();</script>
 {% endblock %}
+<script>
+function switchPage(page, el) {
+    document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+    document.getElementById("page-" + page).classList.add("active");
+
+    document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+    el.classList.add("active");
+
+    if(page === "alerts") loadAlerts();
+}
+
+// ---------------- ALERTS ----------------
+function loadAlerts(){
+    fetch("/api/alerts")
+    .then(res => res.json())
+    .then(data => {
+        console.log("Alerts:", data);
+    });
+}
+
+// ---------------- FILE UPLOAD ----------------
+function handleFile(input){
+    let file = input.files[0];
+    let formData = new FormData();
+    formData.append("file", file);
+
+    fetch("/api/predict", {
+        method: "POST",
+        body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+        let tbody = document.getElementById("resultsBody");
+        tbody.innerHTML = "";
+
+        data.forEach(d => {
+            tbody.innerHTML += `
+            <tr>
+                <td>${d.id}</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
+                <td>${d.risk}</td>
+                <td>${d.risk}</td>
+            </tr>`;
+        });
+
+        document.getElementById("resultsTable").style.display = "block";
+    });
+}
+
+// ---------------- DRAG DROP ----------------
+function dragOver(e){ e.preventDefault(); }
+function dragLeave(){}
+function dropFile(e){
+    e.preventDefault();
+    handleFile({files: e.dataTransfer.files});
+}
+</script>

@@ -134,3 +134,37 @@ function showResults() {
 function viewAlertDetails() {
   switchPage('map', document.querySelector('.nav-item:nth-child(2)'));
 }
+// =========================
+// CHARTS FUNCTION (FIX)
+// =========================
+function initCharts() {
+    // Line Chart
+    const lineCtx = document.getElementById('lineChart');
+    if (lineCtx) {
+        new Chart(lineCtx, {
+            type: 'line',
+            data: {
+                labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May'],
+                datasets: [{
+                    label: 'Risk Level',
+                    data: [12, 19, 8, 15, 10],
+                    tension: 0.4
+                }]
+            }
+        });
+    }
+
+    // Donut Chart
+    const donutCtx = document.getElementById('donutChart');
+    if (donutCtx) {
+        new Chart(donutCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Safe', 'Caution', 'Critical'],
+                datasets: [{
+                    data: [60, 25, 15]
+                }]
+            }
+        });
+    }
+}

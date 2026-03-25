@@ -2,124 +2,84 @@
 {% block title %}Admin Panel — SlopeSentinel{% endblock %}
 
 {% block body %}
-<div id="dashboard">
-  <div class="dash-layout">
+<div class="dashboard">
 
-    <aside class="sidebar">
-      <div class="sidebar-top">
-        <div class="sidebar-brand"><div class="logo-icon">⛰</div>SlopeSentinel</div>
-      </div>
-      <nav class="sidebar-nav">
-        <div class="nav-item"><a href="{{ url_for('dashboard') }}" style="display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none;width:100%">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-          Dashboard
-        </a></div>
-        <div class="nav-item active">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
-          User Management
-        </div>
-      </nav>
-      <div class="sidebar-bottom">
-        <div class="role-chip role-admin">🛡 Admin</div>
-        <div class="user-row">
-          <div class="user-avatar">{{ session.user_name[:2].upper() }}</div>
-          <div class="user-info">
-            <div class="user-name">{{ session.user_name }}</div>
-            <div class="user-role">{{ session.email }}</div>
-          </div>
-        </div>
-        <a href="{{ url_for('logout') }}" class="btn-logout">← Sign Out</a>
-      </div>
-    </aside>
+  <!-- Sidebar (same as dashboard) -->
+  <aside class="sidebar">
+    <h2>SlopeSentinel</h2>
+    <ul>
+      <li><a href="/dashboard">Overview</a></li>
+      <li><a href="/map">Mine Map</a></li>
+      <li><a href="/upload">Upload Data</a></li>
+      <li><a href="/alerts">Alerts</a></li>
+      <li class="active">Admin Panel</li>
+    </ul>
+  </aside>
 
-    <main class="main-panel">
-      <div style="padding:28px 32px;">
+  <!-- Main -->
+  <main class="main-panel">
 
-        <div class="page-header" style="padding:0;margin-bottom:28px">
-          <div class="page-title">
-            <h2>User Management</h2>
-            <p>View and manage all registered SlopeSentinel accounts.</p>
-          </div>
-        </div>
+    <h1 style="margin-bottom:20px;">👑 Admin Panel</h1>
 
-        <!-- Flash messages -->
-        {% with messages = get_flashed_messages(with_categories=true) %}
-          {% if messages %}{% for c,m in messages %}
-            <div class="flash flash-{{ c }}" style="margin-bottom:16px">{{ m }}</div>
-          {% endfor %}{% endif %}
-        {% endwith %}
+    <div class="card">
 
-        <!-- Users table -->
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Full Name</th>
-                <th>Email</th>
-                <th>Role</th>
-                <th>Status</th>
-                <th>Last Login</th>
-                <th>Joined</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for u in users %}
-              <tr id="user-row-{{ u.id }}">
-                <td style="color:var(--muted);font-family:monospace">{{ u.id }}</td>
-                <td>{{ u.full_name }}</td>
-                <td style="font-family:monospace;font-size:12px">{{ u.email }}</td>
-                <td>
-                  <span class="risk-pill {{ 'critical' if u.role == 'admin' else 'safe' }}">
-                    {{ u.role.capitalize() }}
-                  </span>
-                </td>
-                <td id="status-{{ u.id }}">
-                  <span class="risk-pill {{ 'safe' if u.is_active else 'critical' }}">
-                    {{ 'Active' if u.is_active else 'Inactive' }}
-                  </span>
-                </td>
-                <td style="color:var(--muted);font-size:12px">
-                  {{ u.last_login.strftime('%d %b %Y %H:%M') if u.last_login else 'Never' }}
-                </td>
-                <td style="color:var(--muted);font-size:12px">
-                  {{ u.created_at.strftime('%d %b %Y') }}
-                </td>
-                <td>
-                  {% if u.id != session.user_id %}
-                  <button class="btn-secondary" style="padding:5px 12px;font-size:12px"
-                          onclick="toggleUser({{ u.id }})">
-                    <span id="toggle-label-{{ u.id }}">
-                      {{ 'Deactivate' if u.is_active else 'Activate' }}
-                    </span>
-                  </button>
-                  {% else %}
-                  <span style="color:var(--muted);font-size:12px">You</span>
-                  {% endif %}
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
+      <h3>User Management</h3>
 
-      </div>
-    </main>
-  </div>
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% if users %}
+            {% for user in users %}
+            <tr>
+              <td>{{ user.id }}</td>
+              <td>{{ user.full_name }}</td>
+              <td>{{ user.email }}</td>
+
+              <td>
+                {% if user.is_verified %}
+                  <span class="badge success">Verified</span>
+                {% else %}
+                  <span class="badge warning">Pending</span>
+                {% endif %}
+              </td>
+
+              <td class="actions">
+
+                {% if not user.is_verified %}
+                <form action="{{ url_for('approve', id=user.id) }}" method="POST">
+                  <button class="btn approve">Approve</button>
+                </form>
+                {% endif %}
+
+                <form action="{{ url_for('reject', id=user.id) }}" method="POST">
+                  <button class="btn reject">Reject</button>
+                </form>
+
+                <form action="{{ url_for('delete_user', id=user.id) }}" method="POST">
+                  <button class="btn delete">Delete</button>
+                </form>
+
+              </td>
+            </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="5" style="text-align:center;">No users found</td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+
+    </div>
+  </main>
 </div>
-
-<script>
-async function toggleUser(userId) {
-  const res  = await fetch(`/api/users/${userId}/toggle`, { method: 'POST' });
-  const data = await res.json();
-  if (data.error) { alert(data.error); return; }
-
-  const isActive = data.is_active;
-  document.getElementById(`status-${userId}`).innerHTML =
-    `<span class="risk-pill ${isActive ? 'safe' : 'critical'}">${isActive ? 'Active' : 'Inactive'}</span>`;
-  document.getElementById(`toggle-label-${userId}`).textContent =
-    isActive ? 'Deactivate' : 'Activate';
-}
-</script>
 {% endblock %}
