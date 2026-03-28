@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}SlopeSentinel — Predict. Protect. Proceed.{% endblock %}
+
+{% block body %}
+<div id="landing">
+
+  <nav class="nav">
+    <a href="{{ url_for('index') }}" class="nav-logo">
+      <div class="logo-icon">⛰</div>SlopeSentinel
+    </a>
+    <div class="nav-right">
+      <a href="#" class="nav-link">About</a>
+      <a href="{{ url_for('login') }}" class="btn-primary">Launch Dashboard</a>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <div class="hero-bg"></div>
+    <div class="hero-grid"></div>
+    <div class="badge">⚡ AI ENGINE LIVE</div>
+    <h1>Predict. Protect.<br><em>Proceed.</em></h1>
+    <p>SlopeSentinel leverages machine learning to predict rockfall risk in
+       open-pit mines, providing real-time geotechnical insights for a safer workforce.</p>
+    <div class="hero-btns">
+      <a href="{{ url_for('login') }}" class="btn-cta">Get Started →</a>
+      <button class="btn-outline">Request Demo</button>
+    </div>
+  </section>
+
+  <section class="features">
+    <div class="features-inner">
+      <div class="feat">
+        <div class="feat-icon purple">🛡️</div>
+        <h3>Predictive AI</h3>
+        <p>Advanced XGBoost and Random Forest models analyze 10+ geotechnical parameters to forecast risk before incidents occur.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon cyan">📊</div>
+        <h3>Risk Map</h3>
+        <p>Interactive geospatial visualization color-coded by severity, allowing engineers to pinpoint critical mine sectors instantly.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon green">⚡</div>
+        <h3>Instant Alerts</h3>
+        <p>Automated notification system triggers immediate warnings when high-risk thresholds are crossed in any monitored pit.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <span class="footer-copy">© 2024 SlopeSentinel Monitoring Systems. All rights reserved.</span>
+    <div class="footer-links">
+      <a href="#">Safety Report</a>
+      <a href="#">API Docs</a>
+      <a href="#">Geotech Support</a>
+    </div>
+  </footer>
+
+</div>
+{% endblock %}

@@ -1,0 +1,7 @@
+Flask
+flask-mysqldb
+pandas
+scikit-learn
+joblib
+xgboost
+twilio

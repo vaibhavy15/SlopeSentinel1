@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Admin Panel — SlopeSentinel{% endblock %}
+
+{% block body %}
+<div class="dashboard">
+
+  <!-- Sidebar (same as dashboard) -->
+  <aside class="sidebar">
+    <h2>SlopeSentinel</h2>
+    <ul>
+      <li><a href="/dashboard">Overview</a></li>
+      <li><a href="/map">Mine Map</a></li>
+      <li><a href="/upload">Upload Data</a></li>
+      <li><a href="/alerts">Alerts</a></li>
+      <li class="active">Admin Panel</li>
+    </ul>
+  </aside>
+
+  <!-- Main -->
+  <main class="main-panel">
+
+    <h1 style="margin-bottom:20px;">👑 Admin Panel</h1>
+
+    <div class="card">
+
+      <h3>User Management</h3>
+
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% if users %}
+            {% for user in users %}
+            <tr>
+              <td>{{ user.id }}</td>
+              <td>{{ user.full_name }}</td>
+              <td>{{ user.email }}</td>
+
+              <td>
+                {% if user.is_verified %}
+                  <span class="badge success">Verified</span>
+                {% else %}
+                  <span class="badge warning">Pending</span>
+                {% endif %}
+              </td>
+
+              <td class="actions">
+
+                {% if not user.is_verified %}
+                <form action="{{ url_for('approve', id=user.id) }}" method="POST">
+                  <button class="btn approve">Approve</button>
+                </form>
+                {% endif %}
+
+                <form action="{{ url_for('reject', id=user.id) }}" method="POST">
+                  <button class="btn reject">Reject</button>
+                </form>
+
+                <form action="{{ url_for('delete_user', id=user.id) }}" method="POST">
+                  <button class="btn delete">Delete</button>
+                </form>
+
+              </td>
+            </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="5" style="text-align:center;">No users found</td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+
+    </div>
+  </main>
+</div>
+{% endblock %}

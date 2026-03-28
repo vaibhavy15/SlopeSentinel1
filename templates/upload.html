@@ -1,0 +1,19 @@
+<link rel="stylesheet" href="/static/style.css">
+
+<div class="dashboard">
+<h2>Upload Data</h2>
+
+<form method="POST" enctype="multipart/form-data">
+<input type="file" name="file" required>
+<button>Upload & Predict</button>
+</form>
+
+{% if results %}
+<h3>Results:</h3>
+<ul>
+{% for r in results %}
+<li>Site {{r.id}} → {{r.result}}</li>
+{% endfor %}
+</ul>
+{% endif %}
+</div>
