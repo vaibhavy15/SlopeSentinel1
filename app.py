@@ -1,11 +1,14 @@
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify
+
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
 from flask_mysqldb import MySQL
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 import MySQLdb
-import os
-import joblib
 import pandas as pd
+import folium
+import csv
+from io import StringIO
+import secrets
 
 app = Flask(__name__)
 app.secret_key = "secret"
@@ -14,7 +17,7 @@ app.secret_key = "secret"
 app.config["MYSQL_HOST"] = "127.0.0.1"
 app.config["MYSQL_PORT"] = 3306
 app.config["MYSQL_USER"] = "root"
-app.config["MYSQL_PASSWORD"] = "1501"   # 🔴 CHANGE THIS
+app.config["MYSQL_PASSWORD"] = "1501"
 app.config["MYSQL_DB"] = "slopesentinel"
 app.config["MYSQL_CURSORCLASS"] = "DictCursor"
 
@@ -25,7 +28,7 @@ def setup_database():
     db = MySQLdb.connect(
         host="127.0.0.1",
         user="root",
-        passwd="1501",   # 🔴 SAME PASSWORD
+        passwd="1501",
         port=3306
     )
     cursor = db.cursor()
@@ -41,7 +44,9 @@ def setup_database():
         password_hash TEXT,
         role ENUM('engineer','admin') DEFAULT 'engineer',
         is_active BOOLEAN DEFAULT TRUE,
-        is_verified BOOLEAN DEFAULT FALSE
+        is_verified BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_login TIMESTAMP NULL
     )
     """)
 
@@ -75,7 +80,6 @@ def admin_required(f):
 
 # ---------------- ROUTES ----------------
 
-# ✅ FIXED (was home → now index)
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -102,6 +106,9 @@ def login():
         session["role"] = user["role"]
         session["name"] = user["full_name"]
 
+        cur.execute("UPDATE users SET last_login = NOW() WHERE id=%s", (user["id"],))
+        mysql.connection.commit()
+
         return redirect(url_for("dashboard"))
 
     return render_template("login.html")
@@ -115,8 +122,10 @@ def register():
         password = generate_password_hash(request.form["password"])
 
         cur = mysql.connection.cursor()
-        cur.execute("INSERT INTO users (full_name,email,password_hash) VALUES (%s,%s,%s)",
-                    (name,email,password))
+        cur.execute(
+            "INSERT INTO users (full_name,email,password_hash) VALUES (%s,%s,%s)",
+            (name,email,password)
+        )
         mysql.connection.commit()
 
         return redirect(url_for("login"))
@@ -133,29 +142,84 @@ def dashboard():
     })
 
 
+# ---------------- ADMIN PANEL ----------------
 @app.route("/admin")
 @login_required
 @admin_required
-def admin():
+def admin_panel():
     cur = mysql.connection.cursor()
-    cur.execute("SELECT * FROM users")
+    cur.execute("""
+        SELECT id, full_name, email, role, is_active, is_verified,
+               created_at, last_login
+        FROM users
+        ORDER BY is_verified ASC, created_at DESC
+    """)
     users = cur.fetchall()
-    return render_template("admin.html", users=users)
+
+    alert_count = 1  # demo
+
+    cur.close()
+    return render_template("admin.html", users=users, alert_count=alert_count)
 
 
 # ---------------- ADMIN ACTIONS ----------------
-
-
-
-@app.route("/toggle/<int:id>")
+@app.route("/admin/approve/<int:id>", methods=["POST"])
 @login_required
 @admin_required
-def toggle(id):
+def approve(id):
     cur = mysql.connection.cursor()
-    cur.execute("UPDATE users SET is_active = NOT is_active WHERE id=%s", (id,))
+    cur.execute("UPDATE users SET is_verified=1, is_active=1 WHERE id=%s", (id,))
     mysql.connection.commit()
-    return redirect(url_for("admin"))
+    flash("User approved", "success")
+    return redirect(url_for("admin_panel"))
 
+
+@app.route("/admin/reject/<int:id>", methods=["POST"])
+@login_required
+@admin_required
+def reject(id):
+    cur = mysql.connection.cursor()
+    cur.execute("UPDATE users SET is_verified=0, is_active=0 WHERE id=%s", (id,))
+    mysql.connection.commit()
+    flash("User rejected", "warning")
+    return redirect(url_for("admin_panel"))
+
+
+@app.route("/admin/delete/<int:id>", methods=["POST"])
+@login_required
+@admin_required
+def delete_user(id):
+    if id == session["user_id"]:
+        flash("Cannot delete yourself", "danger")
+        return redirect(url_for("admin_panel"))
+
+    cur = mysql.connection.cursor()
+    cur.execute("DELETE FROM users WHERE id=%s", (id,))
+    mysql.connection.commit()
+    flash("User deleted", "danger")
+    return redirect(url_for("admin_panel"))
+
+
+@app.route("/admin/invite", methods=["POST"])
+@login_required
+@admin_required
+def invite_user():
+    name = request.form.get("full_name")
+    email = request.form.get("email")
+    role = request.form.get("role")
+
+    temp_password = secrets.token_urlsafe(8)
+    hashed = generate_password_hash(temp_password)
+
+    cur = mysql.connection.cursor()
+    cur.execute("""
+        INSERT INTO users (full_name,email,password_hash,role,is_active,is_verified)
+        VALUES (%s,%s,%s,%s,1,0)
+    """, (name,email,hashed,role))
+    mysql.connection.commit()
+
+    flash(f"Invite created. Temp password: {temp_password}", "success")
+    return redirect(url_for("admin_panel"))
 
 
 # ---------------- LOGOUT ----------------
@@ -164,42 +228,20 @@ def logout():
     session.clear()
     return redirect(url_for("login"))
 
-import folium
-from flask import send_file
-import csv
-from io import StringIO
 
-# ---------------- MINE MAP ----------------
+# ---------------- MAP ----------------
 @app.route("/map")
 @login_required
 def map_view():
     m = folium.Map(location=[28.6, 77.2], zoom_start=5)
-
-    folium.Marker([28.6, 77.2], tooltip="Mine 1", popup="Safe").add_to(m)
-    folium.Marker([22.5, 88.3], tooltip="Mine 2", popup="Critical").add_to(m)
-
-    map_html = m._repr_html_()
-    return render_template("map.html", map=map_html)
+    folium.Marker([28.6, 77.2], tooltip="Mine 1").add_to(m)
+    return render_template("map.html", map=m._repr_html_())
 
 
-# ---------------- UPLOAD + PREDICT ----------------
+# ---------------- UPLOAD ----------------
 @app.route("/upload", methods=["GET","POST"])
 @login_required
 def upload_page():
-    if request.method == "POST":
-        file = request.files["file"]
-        df = pd.read_csv(file)
-
-        df_scaled = scaler.transform(df)
-        preds = model.predict(df_scaled)
-
-        results = []
-        for i, p in enumerate(preds):
-            label = ["Safe","Caution","Critical"][int(p)]
-            results.append({"id": i+1, "result": label})
-
-        return render_template("upload.html", results=results)
-
     return render_template("upload.html")
 
 
@@ -207,105 +249,33 @@ def upload_page():
 @app.route("/alerts")
 @login_required
 def alerts():
-    alerts_data = [
-        {"msg": "Slope instability detected", "level": "Critical"},
-        {"msg": "Water level rising", "level": "Caution"}
-    ]
-    return render_template("alerts.html", alerts=alerts_data)
+    return render_template("alerts.html")
 
 
-# ---------------- EXPORT REPORT ----------------
+# ---------------- EXPORT ----------------
 @app.route("/export")
 @login_required
 def export():
     si = StringIO()
     writer = csv.writer(si)
-
     writer.writerow(["Site","Status"])
     writer.writerow(["Mine 1","Safe"])
-    writer.writerow(["Mine 2","Critical"])
-
-    output = si.getvalue()
-
     return app.response_class(
-        output,
+        si.getvalue(),
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment;filename=report.csv"}
     )
 
 
-# ---------------- NEW ANALYSIS ----------------
+# ---------------- ANALYSIS ----------------
 @app.route("/analysis")
 @login_required
 def analysis():
     return render_template("analysis.html")
-from flask import jsonify
-
-# ---------------- MAP DATA ----------------
-@app.route("/api/map")
-@login_required
-def get_map():
-    data = [
-        {"name": "North Pit Alpha", "status": "Safe"},
-        {"name": "Eastern Haul Road", "status": "Critical"}
-    ]
-    return jsonify(data)
 
 
-# ---------------- ALERTS DATA ----------------
-@app.route("/api/alerts")
-@login_required
-def get_alerts():
-    alerts = [
-        {
-            "title": "Critical Rockfall Warning",
-            "desc": "High risk detected at Eastern Haul Road!",
-            "time": "22:00"
-        }
-    ]
-    return jsonify(alerts)
-
-
-# ---------------- PREDICTION ----------------
-@app.route("/api/predict", methods=["POST"])
-@login_required
-def predict():
-    file = request.files["file"]
-    df = pd.read_csv(file)
-
-    df_scaled = scaler.transform(df)
-    preds = model.predict(df_scaled)
-
-    result = []
-    for i, p in enumerate(preds):
-        label = ["Safe","Caution","Critical"][int(p)]
-        result.append({
-            "id": i+1,
-            "risk": label
-        })
-
-    return jsonify(result)
-@app.route("/approve/<int:id>", methods=["POST"])
-def approve(id):
-    cur = mysql.connection.cursor()
-    cur.execute("UPDATE users SET is_verified=1 WHERE id=%s", (id,))
-    mysql.connection.commit()
-    return redirect(url_for("admin"))
-
-@app.route("/reject/<int:id>", methods=["POST"])
-def reject(id):
-    cur = mysql.connection.cursor()
-    cur.execute("UPDATE users SET is_verified=0 WHERE id=%s", (id,))
-    mysql.connection.commit()
-    return redirect(url_for("admin"))
-
-@app.route("/delete/<int:id>", methods=["POST"])
-def delete_user(id):
-    cur = mysql.connection.cursor()
-    cur.execute("DELETE FROM users WHERE id=%s", (id,))
-    mysql.connection.commit()
-    return redirect(url_for("admin"))
 # ---------------- RUN ----------------
 if __name__ == "__main__":
     setup_database()
     app.run(debug=True)
+
