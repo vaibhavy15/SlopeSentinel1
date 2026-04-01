@@ -1,48 +1,54 @@
 {% extends "base.html" %}
 {% block title %}Register — SlopeSentinel{% endblock %}
-
 {% block body %}
 <div id="auth-page">
+  <div class="auth-bg"></div>
+  <div class="auth-grid"></div>
 
   <div class="auth-wrapper">
-
     <div class="auth-logo">
       <div class="auth-logo-icon">⛰</div>
       <h2>Create Account</h2>
-      <p>Join SlopeSentinel</p>
+      <p>Join the SlopeSentinel safety network.</p>
     </div>
 
     {% if error %}
-      <div class="flash flash-danger">{{ error }}</div>
+      <div class="flash flash-danger"><span class="flash-icon">⚠</span> {{ error }}</div>
     {% endif %}
 
-    <form method="POST" class="auth-form">
+    <form class="auth-form" method="POST" action="{{ url_for('register') }}" novalidate>
+      <h3>Register</h3>
+      <p class="sub">Your account will be reviewed by an admin before activation.</p>
 
       <div class="field">
         <label>Full Name</label>
-        <input type="text" name="name" placeholder="Full Name" required>
+        <div class="input-wrap">
+          <span class="input-icon">👤</span>
+          <input type="text" name="name" placeholder="Jane Engineer" required />
+        </div>
       </div>
 
       <div class="field">
-        <label>Email</label>
-        <input type="email" name="email" placeholder="Email" required>
+        <label>Work Email</label>
+        <div class="input-wrap">
+          <span class="input-icon">✉</span>
+          <input type="email" name="email" placeholder="name@mine-site.com" required />
+        </div>
       </div>
 
       <div class="field">
         <label>Password</label>
-        <input type="password" name="password"  placeholder="Password" required>
+        <div class="input-wrap">
+          <span class="input-icon">🔒</span>
+          <input type="password" name="password" placeholder="Min. 6 characters" required />
+        </div>
       </div>
 
-      <button type="submit" class="btn-signin">Register</button>
-
+      <button type="submit" class="btn-signin">Create Account</button>
       <div class="divider">OR</div>
-
-      <a href="{{ url_for('login') }}" class="btn-anon">
-        Already have an account? Login
-      </a>
-
+      <a href="{{ url_for('login') }}" class="btn-anon">Already have an account? Sign in</a>
     </form>
-
   </div>
+  <a href="{{ url_for('index') }}" class="back-link">← Back to landing page</a>
 </div>
 {% endblock %}

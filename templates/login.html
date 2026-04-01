@@ -1,186 +1,97 @@
 {% extends "base.html" %}
 {% block title %}Login — SlopeSentinel{% endblock %}
-
 {% block body %}
 <div id="auth-page">
-
-  <!-- Animated background -->
   <div class="auth-bg"></div>
   <div class="auth-grid"></div>
 
   <div class="auth-wrapper">
-
-    <!-- Logo -->
     <div class="auth-logo">
       <div class="auth-logo-icon">⛰</div>
       <h2>Welcome Back</h2>
       <p>Secure access to the SlopeSentinel monitoring portal.</p>
     </div>
 
-    <!-- Role tabs -->
     <div class="tab-row">
-      <button class="tab-btn {% if request.form.get('role_tab','engineer') == 'engineer' %}active{% endif %}"
-              onclick="setRoleTab(this,'engineer')" type="button">
-        👷 Engineer/Miner
-      </button>
-      <button class="tab-btn {% if request.form.get('role_tab') == 'admin' %}active{% endif %}"
-              onclick="setRoleTab(this,'admin')" type="button">
-        🛡 Administrator
-      </button>
+      <button class="tab-btn active" onclick="setRoleTab(this,'engineer')" type="button">👷 Engineer/Miner</button>
+      <button class="tab-btn"        onclick="setRoleTab(this,'admin')"    type="button">🛡 Administrator</button>
     </div>
 
-    <!-- Flash messages -->
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="flash flash-{{ category }}">{{ message }}</div>
-        {% endfor %}
-      {% endif %}
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+      {% for cat,msg in msgs %}
+        <div class="flash flash-{{ cat }}"><span class="flash-icon">{% if cat=='success' %}✓{% elif cat=='danger' %}⚠{% else %}ℹ{% endif %}</span> {{ msg }}</div>
+      {% endfor %}
     {% endwith %}
 
-    <!-- Error banner -->
     {% if error %}
-      <div class="flash flash-danger">
-        <span class="flash-icon">⚠</span> {{ error }}
-      </div>
+      <div class="flash flash-danger"><span class="flash-icon">⚠</span> {{ error }}</div>
     {% endif %}
 
-    <!-- Login form -->
     <form class="auth-form" method="POST" action="{{ url_for('login') }}" novalidate>
-
-      <!-- Hidden role field — updated by JS when tab is clicked -->
-      <input type="hidden" name="role_tab" id="roleTabInput"
-             value="{{ request.form.get('role_tab', 'engineer') }}" />
-
+      <input type="hidden" name="role_tab" id="roleTabInput" value="engineer" />
       <h3>Login</h3>
       <p class="sub">Enter your credentials to access your mining sector data.</p>
 
-      <!-- Email -->
       <div class="field">
         <label for="email">Work Email</label>
         <div class="input-wrap">
           <span class="input-icon">✉</span>
-          <input
-            type="email"
-            id="email"
-            name="email"
-            placeholder="name@mine-site.com"
-            value="{{ request.form.get('email', '') }}"
-            autocomplete="email"
-            required
-          />
+          <input type="email" id="email" name="email" placeholder="name@mine-site.com"
+                 value="{{ request.form.get('email','') }}" autocomplete="email" required />
         </div>
         <span class="field-err" id="emailErr"></span>
       </div>
 
-      <!-- Password -->
       <div class="field">
-        <label for="password">
-          Password
-          <a href="#" tabindex="-1">Forgot password?</a>
-        </label>
+        <label for="password">Password <a href="#" tabindex="-1">Forgot password?</a></label>
         <div class="input-wrap">
           <span class="input-icon">🔒</span>
-          <input
-            type="password"
-            id="password"
-            name="password"
-            placeholder="••••••••"
-            autocomplete="current-password"
-            required
-          />
-          <button type="button" class="toggle-pw" onclick="togglePassword()" tabindex="-1">
-            <span id="pwEye">👁</span>
-          </button>
+          <input type="password" id="password" name="password" placeholder="••••••••"
+                 autocomplete="current-password" required />
+          <button type="button" class="toggle-pw" onclick="togglePw()" tabindex="-1"><span id="pwEye">👁</span></button>
         </div>
         <span class="field-err" id="pwErr"></span>
       </div>
 
-      <!-- Remember me -->
       <div class="remember-row">
         <label class="checkbox-label">
-          <input type="checkbox" name="remember_me"
-                 {% if request.form.get('remember_me') %}checked{% endif %} />
+          <input type="checkbox" name="remember_me" />
           <span class="checkbox-custom"></span>
           Keep me signed in for 7 days
         </label>
       </div>
 
-      <!-- Submit -->
       <button type="submit" class="btn-signin" id="signinBtn">
         <span class="btn-text">Sign In</span>
-        <span class="btn-spinner" id="spinner" style="display:none">⏳</span>
+        <span id="spinner" style="display:none">⏳</span>
       </button>
-        <div class="divider">OR</div>
-<a href="{{ url_for('register') }}" class="btn-anon">
-  Create new account
-</a>
 
-      <!-- Anonymous access -->
-      <div class="divider">OR CONTINUE AS</div>
-      <a href="{{ url_for('dashboard') }}" class="btn-anon">Anonymous Viewer Access</a>
-
+      <div class="divider">OR</div>
+      <a href="{{ url_for('register') }}" class="btn-anon">Create New Account</a>
+      <div class="divider">DEMO CREDENTIALS</div>
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--muted);line-height:1.8">
+        <strong style="color:var(--text)">Admin:</strong> admin@slopesentinel.com / Admin@123<br>
+        <strong style="color:var(--text)">Engineer:</strong> engineer@mine-site.com / Engineer@123
+      </div>
     </form>
-
-  </div><!-- /auth-wrapper -->
-
-  <!-- Back to landing -->
+  </div>
   <a href="{{ url_for('index') }}" class="back-link">← Back to landing page</a>
-
-</div><!-- /auth-page -->
+</div>
 
 <script>
-  /* ---- Tab switcher ---- */
-  function setRoleTab(btn, role) {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById('roleTabInput').value = role;
-  }
-
-  /* ---- Password visibility toggle ---- */
-  function togglePassword() {
-    const input = document.getElementById('password');
-    const eye   = document.getElementById('pwEye');
-    if (input.type === 'password') {
-      input.type = 'text';
-      eye.textContent = '🙈';
-    } else {
-      input.type = 'password';
-      eye.textContent = '👁';
-    }
-  }
-
-  /* ---- Client-side validation + loading spinner ---- */
-  document.querySelector('.auth-form').addEventListener('submit', function(e) {
-    let valid = true;
-
-    const email  = document.getElementById('email');
-    const pw     = document.getElementById('password');
-    const emailErr = document.getElementById('emailErr');
-    const pwErr    = document.getElementById('pwErr');
-
-    emailErr.textContent = '';
-    pwErr.textContent    = '';
-
-    if (!email.value.trim()) {
-      emailErr.textContent = 'Email is required.';
-      valid = false;
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value)) {
-      emailErr.textContent = 'Please enter a valid email.';
-      valid = false;
-    }
-
-    if (!pw.value) {
-      pwErr.textContent = 'Password is required.';
-      valid = false;
-    }
-
-    if (!valid) { e.preventDefault(); return; }
-
-    /* Show spinner */
-    document.getElementById('spinner').style.display = 'inline';
-    document.querySelector('.btn-text').textContent = 'Signing in…';
-    document.getElementById('signinBtn').disabled = true;
-  });
+function setRoleTab(btn,role){ document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); document.getElementById('roleTabInput').value=role; }
+function togglePw(){ const i=document.getElementById('password'),e=document.getElementById('pwEye'); i.type=i.type==='password'?'text':'password'; e.textContent=i.type==='password'?'👁':'🙈'; }
+document.querySelector('.auth-form').addEventListener('submit',function(e){
+  let ok=true;
+  const em=document.getElementById('email'),pw=document.getElementById('password');
+  document.getElementById('emailErr').textContent=''; document.getElementById('pwErr').textContent='';
+  if(!em.value.trim()){document.getElementById('emailErr').textContent='Email required.';ok=false;}
+  else if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em.value)){document.getElementById('emailErr').textContent='Enter a valid email.';ok=false;}
+  if(!pw.value){document.getElementById('pwErr').textContent='Password required.';ok=false;}
+  if(!ok){e.preventDefault();return;}
+  document.getElementById('spinner').style.display='inline';
+  document.querySelector('.btn-text').textContent='Signing in…';
+  document.getElementById('signinBtn').disabled=true;
+});
 </script>
 {% endblock %}

@@ -1,301 +1,143 @@
 {% extends "base.html" %}
 {% block title %}Admin Panel — SlopeSentinel{% endblock %}
-
 {% block body %}
 <div id="dashboard">
   <div class="dash-layout">
+    {% set active='admin' %}{% include '_sidebar.html' %}
 
-    <!-- ═══════════════════════════════════════
-         SIDEBAR
-    ═══════════════════════════════════════ -->
-    <aside class="sidebar">
-      <div class="sidebar-top">
-        <div class="sidebar-brand">
-          <div class="logo-icon">⛰</div>
-          SlopeSentinel
-        </div>
-      </div>
-
-      <nav class="sidebar-nav">
-        <div class="nav-item" onclick="window.location.href='/dashboard'">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
-            <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
-          </svg>
-          Overview
-        </div>
-        <div class="nav-item" onclick="window.location.href='/map'">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/>
-            <line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/>
-          </svg>
-          Mine Map
-        </div>
-        <div class="nav-item" onclick="window.location.href='/upload'">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/>
-            <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
-          </svg>
-          Upload Data
-        </div>
-        <div class="nav-item" onclick="window.location.href='/alerts'">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-          </svg>
-          Alerts
-        </div>
-        <div class="nav-item active">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-            <circle cx="9" cy="7" r="4"/>
-            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-          </svg>
-          Admin Panel
-        </div>
-      </nav>
-
-      <div class="sidebar-bottom">
-        <div class="role-chip role-admin">🛡 Admin</div>
-        <div class="user-row">
-          <div class="user-avatar">{{ session.user_name[:2].upper() if session.user_name else 'AD' }}</div>
-          <div class="user-info">
-            <div class="user-name">{{ session.user_name or 'Admin' }}</div>
-            <div class="user-role">{{ session.email or 'Administrator' }}</div>
-          </div>
-        </div>
-        <a href="{{ url_for('logout') }}" class="btn-logout">← Sign Out</a>
-      </div>
-    </aside>
-
-    <!-- ═══════════════════════════════════════
-         MAIN PANEL
-    ═══════════════════════════════════════ -->
     <main class="main-panel">
 
-      <!-- Flash messages -->
-      {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-          <div style="padding:16px 32px 0">
-            {% for category, message in messages %}
-              <div class="flash flash-{{ category }}">
-                <span class="flash-icon">{% if category=='success' %}✓{% elif category=='danger' %}⚠{% else %}ℹ{% endif %}</span>
-                {{ message }}
-              </div>
-            {% endfor %}
-          </div>
-        {% endif %}
+      {% with msgs = get_flashed_messages(with_categories=true) %}
+        {% if msgs %}<div style="padding:16px 32px 0">{% for cat,msg in msgs %}
+          <div class="flash flash-{{ cat }}" style="margin-bottom:8px"><span class="flash-icon">{% if cat=='success' %}✓{% elif cat=='danger' %}⚠{% else %}ℹ{% endif %}</span> {{ msg }}</div>
+        {% endfor %}</div>{% endif %}
       {% endwith %}
 
-      <!-- ─── Page header ─── -->
       <div class="page-header">
         <div class="page-title">
           <h2>Admin Panel</h2>
-          <p>System control — manage users, monitor alerts, and ensure operational safety.</p>
+          <p>Manage users, monitor alerts, and maintain system integrity.</p>
         </div>
         <div class="header-actions">
           <button class="btn-secondary" onclick="exportUsers()">⬇ Export Users</button>
-          <button class="btn-new" onclick="openInviteModal()">+ Invite User</button>
+          <button class="btn-new" onclick="openModal('inviteModal')">+ Invite User</button>
         </div>
       </div>
 
-      <!-- ─── System stats bar ─── -->
-      {% set total_users   = users | length %}
-      {% set pending_list  = users | selectattr('is_verified', 'equalto', false) | list %}
-      {% set active_list   = users | selectattr('is_verified', 'equalto', true)  | list %}
-      {% set pending_count = pending_list | length %}
-      {% set active_count  = active_list  | length %}
+      <!-- System stats -->
+      {% set total   = users|length %}
+      {% set pending = users|selectattr('is_verified','equalto',false)|list|length %}
+      {% set active_u= users|selectattr('is_verified','equalto',true)|list|length %}
 
       <div class="admin-stats-row">
-
         <div class="admin-stat">
-          <div class="admin-stat-icon" style="background:rgba(124,111,255,.12);color:var(--accent)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          </div>
-          <div><div class="admin-stat-value">{{ total_users }}</div><div class="admin-stat-label">Total Users</div></div>
+          <div class="admin-stat-icon" style="background:rgba(124,111,255,.12);color:var(--accent)">👥</div>
+          <div><div class="admin-stat-value">{{ total }}</div><div class="admin-stat-label">Total Users</div></div>
         </div>
-
         <div class="admin-stat">
-          <div class="admin-stat-icon" style="background:rgba(34,197,94,.1);color:var(--green)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-          </div>
-          <div><div class="admin-stat-value">{{ active_count }}</div><div class="admin-stat-label">Verified Users</div></div>
+          <div class="admin-stat-icon" style="background:rgba(34,197,94,.1);color:var(--green)">✓</div>
+          <div><div class="admin-stat-value">{{ active_u }}</div><div class="admin-stat-label">Verified Users</div></div>
         </div>
-
         <div class="admin-stat">
-          <div class="admin-stat-icon" style="background:rgba(249,115,22,.1);color:var(--orange)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          </div>
-          <div><div class="admin-stat-value">{{ pending_count }}</div><div class="admin-stat-label">Pending Approval</div></div>
+          <div class="admin-stat-icon" style="background:rgba(249,115,22,.1);color:var(--orange)">⏳</div>
+          <div><div class="admin-stat-value">{{ pending }}</div><div class="admin-stat-label">Pending Approval</div></div>
         </div>
-
         <div class="admin-stat">
-          <div class="admin-stat-icon" style="background:rgba(239,68,68,.1);color:var(--red)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-          </div>
-          <div><div class="admin-stat-value">{{ alert_count or 1 }}</div><div class="admin-stat-label">Active Alerts</div></div>
+          <div class="admin-stat-icon" style="background:rgba(239,68,68,.1);color:var(--red)">🚨</div>
+          <div><div class="admin-stat-value">{{ alert_count }}</div><div class="admin-stat-label">Active Alerts</div></div>
         </div>
-
         <div class="admin-stat">
-          <div class="admin-stat-icon" style="background:rgba(0,229,255,.08);color:var(--accent2)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M12 2v2M12 20v2M20 12h2M2 12h2M17.66 17.66l1.41 1.41M4.93 19.07l1.41-1.41"/></svg>
-          </div>
-          <div><div class="admin-stat-value" style="color:var(--green)">OK</div><div class="admin-stat-label">System Health</div></div>
+          <div class="admin-stat-icon" style="background:rgba(0,229,255,.08);color:var(--accent2)">🧠</div>
+          <div><div class="admin-stat-value">{{ total_preds }}</div><div class="admin-stat-label">Total Predictions</div></div>
         </div>
-
       </div>
 
-      <!-- ─── Tab navigation ─── -->
+      <!-- Tabs -->
       <div class="admin-tabs-wrap">
         <div class="admin-tabs">
           <button class="admin-tab active" onclick="switchAdminTab('users',this)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-            User Management
-            {% if pending_count > 0 %}<span class="tab-count orange">{{ pending_count }}</span>{% endif %}
+            👥 User Management {% if pending > 0 %}<span class="tab-count orange">{{ pending }}</span>{% endif %}
           </button>
           <button class="admin-tab" onclick="switchAdminTab('alertstab',this)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-            System Alerts
-            <span class="tab-count red">{{ alert_count or 1 }}</span>
+            🚨 System Alerts <span class="tab-count red">{{ alert_count }}</span>
           </button>
-          <button class="admin-tab" onclick="switchAdminTab('activity',this)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-            Activity Log
-          </button>
-          <button class="admin-tab" onclick="switchAdminTab('integrity',this)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-            Data Integrity
-          </button>
+          <button class="admin-tab" onclick="switchAdminTab('activity',this)">📋 Activity Log</button>
+          <button class="admin-tab" onclick="switchAdminTab('integrity',this)">🛡 Data Integrity</button>
+          <button class="admin-tab" onclick="switchAdminTab('broadcast',this)">📢 Broadcast</button>
         </div>
       </div>
 
       <div class="admin-tab-content">
 
-        <!-- ══════════════════════════════════
-             TAB 1 — USER MANAGEMENT
-        ══════════════════════════════════ -->
+        <!-- TAB 1 — USERS -->
         <div class="admin-tab-panel active" id="tab-users">
-
           <div class="tab-toolbar">
             <div class="search-wrap">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="search-icon"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input type="text" class="search-input" placeholder="Search by name or email…" oninput="filterUsers(this.value)" />
+              <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" class="search-input" placeholder="Search by name or email…" oninput="filterUsers(this.value)"/>
             </div>
             <div class="filter-row">
               <select class="filter-select" onchange="filterByRole(this.value)">
-                <option value="">All Roles</option>
-                <option value="engineer">Engineer</option>
-                <option value="admin">Admin</option>
+                <option value="">All Roles</option><option value="engineer">Engineer</option><option value="admin">Admin</option>
               </select>
               <select class="filter-select" onchange="filterByStatus(this.value)">
-                <option value="">All Status</option>
-                <option value="verified">Verified</option>
-                <option value="pending">Pending</option>
+                <option value="">All Status</option><option value="verified">Verified</option><option value="pending">Pending</option>
               </select>
             </div>
           </div>
-
           <div class="table-wrap">
             <table id="usersTable">
-              <thead>
-                <tr>
-                  <th style="width:44px">#</th>
-                  <th>User</th>
-                  <th>Role</th>
-                  <th>Status</th>
-                  <th>Last Login</th>
-                  <th>Joined</th>
-                  <th style="text-align:right">Actions</th>
-                </tr>
-              </thead>
+              <thead><tr><th>#</th><th>User</th><th>Role</th><th>Status</th><th>Last Login</th><th>Joined</th><th style="text-align:right">Actions</th></tr></thead>
               <tbody>
-                {% for user in users %}
-                <tr class="user-row"
-                    data-name="{{ user.full_name | lower }}"
-                    data-email="{{ user.email | lower }}"
-                    data-role="{{ user.role }}"
-                    data-status="{{ 'verified' if user.is_verified else 'pending' }}"
-                    id="row-{{ user.id }}">
-
-                  <td style="color:var(--muted);font-family:monospace;font-size:12px">{{ user.id }}</td>
-
+                {% for u in users %}
+                <tr class="user-row" id="row-{{ u.id }}"
+                    data-name="{{ u.full_name|lower }}" data-email="{{ u.email|lower }}"
+                    data-role="{{ u.role }}" data-status="{{ 'verified' if u.is_verified else 'pending' }}">
+                  <td style="color:var(--muted);font-family:monospace;font-size:12px">{{ u.id }}</td>
                   <td>
                     <div class="user-cell">
-                      <div class="user-cell-avatar" style="background:{{ '#7c6fff' if user.role == 'admin' else '#0e7490' }}">
-                        {{ user.full_name[:2].upper() }}
-                      </div>
-                      <div>
-                        <div class="user-cell-name">{{ user.full_name }}</div>
-                        <div class="user-cell-email">{{ user.email }}</div>
-                      </div>
+                      <div class="user-cell-avatar" style="background:{{ '#7c6fff' if u.role=='admin' else '#0e7490' }}">{{ u.full_name[:2].upper() }}</div>
+                      <div><div class="user-cell-name">{{ u.full_name }}</div><div class="user-cell-email">{{ u.email }}</div></div>
                     </div>
                   </td>
-
-                  <td>
-                    <span class="role-badge {{ 'role-admin' if user.role == 'admin' else 'role-eng' }}">
-                      {{ '🛡 Admin' if user.role == 'admin' else '👷 Engineer' }}
-                    </span>
-                  </td>
-
+                  <td><span class="role-badge {{ 'role-admin' if u.role=='admin' else 'role-eng' }}">{{ '🛡 Admin' if u.role=='admin' else '👷 Engineer' }}</span></td>
                   <td>
                     <div style="display:flex;align-items:center;gap:6px">
-                      <span class="status-dot {{ 'dot-green' if user.is_verified else 'dot-orange' }}"></span>
-                      <span class="risk-pill {{ 'safe' if user.is_verified else 'caution' }}" id="status-pill-{{ user.id }}">
-                        {{ 'Verified' if user.is_verified else 'Pending' }}
-                      </span>
+                      <span class="status-dot {{ 'dot-green' if u.is_verified else 'dot-orange' }}"></span>
+                      <span class="risk-pill {{ 'safe' if u.is_verified else 'caution' }}" id="spill-{{ u.id }}">{{ 'Verified' if u.is_verified else 'Pending' }}</span>
                     </div>
                   </td>
-
-                  <td style="color:var(--muted);font-size:12px">
-                    {{ user.last_login.strftime('%d %b %Y %H:%M') if user.last_login else '—' }}
-                  </td>
-
-                  <td style="color:var(--muted);font-size:12px">
-                    {{ user.created_at.strftime('%d %b %Y') if user.created_at else '—' }}
-                  </td>
-
+                  <td style="color:var(--muted);font-size:12px">{{ u.last_login.strftime('%d %b %H:%M') if u.last_login else '—' }}</td>
+                  <td style="color:var(--muted);font-size:12px">{{ u.created_at.strftime('%d %b %Y') if u.created_at else '—' }}</td>
                   <td>
                     <div class="action-btns">
-                      {% if not user.is_verified %}
-                      <form action="{{ url_for('approve', id=user.id) }}" method="POST" style="display:inline">
-                        <button type="submit" class="action-btn approve-btn" title="Approve access">
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                          Approve
-                        </button>
+                      {% if not u.is_verified %}
+                      <form action="{{ url_for('approve',uid=u.id) }}" method="POST" style="display:inline">
+                        <button type="submit" class="action-btn approve-btn">✓ Approve</button>
                       </form>
                       {% endif %}
-                      <form action="{{ url_for('reject', id=user.id) }}" method="POST" style="display:inline">
-                        <button type="submit" class="action-btn reject-btn" title="Reject access">
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                          Reject
-                        </button>
+                      <form action="{{ url_for('reject',uid=u.id) }}" method="POST" style="display:inline">
+                        <button type="submit" class="action-btn reject-btn">✕ Reject</button>
                       </form>
-                      <button type="button" class="action-btn delete-btn"
-                              onclick="confirmDelete({{ user.id }}, '{{ user.full_name }}')"
-                              title="Delete user">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                      {% if u.id != session.user_id %}
+                      <button class="action-btn delete-btn" onclick="confirmDelete({{ u.id }},'{{ u.full_name }}')">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
                       </button>
+                      {% endif %}
                     </div>
                   </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:48px 0">No users registered yet.</td></tr>
+                <tr><td colspan="7" style="text-align:center;padding:40px;color:var(--muted)">No users found.</td></tr>
                 {% endfor %}
               </tbody>
             </table>
           </div>
-
-          <div class="table-footer">
-            <span class="table-count" id="tableCount">Showing {{ users | length }} user{{ 's' if users | length != 1 else '' }}</span>
-          </div>
+          <div class="table-footer"><span class="table-count" id="tableCount">{{ users|length }} users</span></div>
         </div>
 
-        <!-- ══════════════════════════════════
-             TAB 2 — SYSTEM ALERTS
-        ══════════════════════════════════ -->
+        <!-- TAB 2 — ALERTS -->
         <div class="admin-tab-panel" id="tab-alertstab">
-
           <div class="alerts-toolbar">
             <div style="display:flex;gap:8px">
               <button class="filter-chip active" onclick="filterAlerts('all',this)">All</button>
@@ -303,257 +145,145 @@
               <button class="filter-chip" onclick="filterAlerts('warning',this)">Warning</button>
               <button class="filter-chip" onclick="filterAlerts('info',this)">Info</button>
             </div>
-            <button class="btn-secondary" onclick="ackAllAlerts()">✓ Acknowledge All</button>
           </div>
-
-          <div id="alertsList">
-            <div class="admin-alert-card sev-critical" data-sev="critical">
-              <div class="admin-alert-icon sev-critical-icon">🚨</div>
-              <div class="admin-alert-body">
-                <div class="admin-alert-top">
-                  <span class="admin-alert-title">Critical Rockfall Warning</span>
-                  <div class="admin-alert-meta"><span>📍 Eastern Haul Road</span><span>🕐 04/01/2026 22:00</span></div>
-                </div>
-                <p class="admin-alert-msg">High risk detected — slope stability index dropped below threshold. Immediate inspection required.</p>
-                <div class="admin-alert-foot">
-                  <span class="sev-badge sev-critical">Critical</span>
-                  <button class="ack-btn" onclick="ackAlert(this)">Acknowledge</button>
-                  <a class="alert-view" href="/map">View on Map ›</a>
-                </div>
+          {% for a in sys_alerts %}
+          <div class="admin-alert-card sev-{{ a.severity }} {% if a.acknowledged %}acked{% endif %}" data-sev="{{ a.severity }}">
+            <div class="admin-alert-icon sev-{{ a.severity }}-icon">{% if a.severity=='critical' %}🚨{% elif a.severity=='warning' %}⚠️{% else %}ℹ️{% endif %}</div>
+            <div class="admin-alert-body">
+              <div class="admin-alert-top">
+                <span class="admin-alert-title">{{ a.title }}</span>
+                <div class="admin-alert-meta"><span>📍 {{ a.site_id }}</span><span>🕐 {{ a.created_at.strftime('%d %b %H:%M') }}</span></div>
               </div>
-            </div>
-            <div class="admin-alert-card sev-warning" data-sev="warning">
-              <div class="admin-alert-icon sev-warning-icon">⚠️</div>
-              <div class="admin-alert-body">
-                <div class="admin-alert-top">
-                  <span class="admin-alert-title">Elevated Moisture Detected</span>
-                  <div class="admin-alert-meta"><span>📍 North Pit Alpha</span><span>🕐 04/01/2026 18:32</span></div>
-                </div>
-                <p class="admin-alert-msg">Rainfall sensors report 210mm accumulation. Caution zone widened by 15m. Monitor closely.</p>
-                <div class="admin-alert-foot">
-                  <span class="sev-badge sev-warning">Warning</span>
-                  <button class="ack-btn" onclick="ackAlert(this)">Acknowledge</button>
-                  <a class="alert-view" href="/map">View on Map ›</a>
-                </div>
-              </div>
-            </div>
-            <div class="admin-alert-card sev-warning" data-sev="warning">
-              <div class="admin-alert-icon sev-warning-icon">📡</div>
-              <div class="admin-alert-body">
-                <div class="admin-alert-top">
-                  <span class="admin-alert-title">Sensor Offline</span>
-                  <div class="admin-alert-meta"><span>📍 West Bench B2 — Sensor #47</span><span>🕐 04/01/2026 14:10</span></div>
-                </div>
-                <p class="admin-alert-msg">Accelerometer unit lost connection. Last reading: 2.3g. Manual field check recommended.</p>
-                <div class="admin-alert-foot">
-                  <span class="sev-badge sev-warning">Warning</span>
-                  <button class="ack-btn" onclick="ackAlert(this)">Acknowledge</button>
-                  <a class="alert-view" href="/map">View on Map ›</a>
-                </div>
-              </div>
-            </div>
-            <div class="admin-alert-card sev-info acked" data-sev="info">
-              <div class="admin-alert-icon sev-info-icon">ℹ️</div>
-              <div class="admin-alert-body">
-                <div class="admin-alert-top">
-                  <span class="admin-alert-title">Scheduled Maintenance Complete</span>
-                  <div class="admin-alert-meta"><span>📍 Central Zone CZ</span><span>🕐 04/01/2026 09:00</span></div>
-                </div>
-                <p class="admin-alert-msg">Sensor calibration cycle completed successfully. All 12 units reading nominal values.</p>
-                <div class="admin-alert-foot">
-                  <span class="sev-badge sev-info">Info</span>
-                  <span style="font-size:12px;color:var(--green)">✓ Acknowledged</span>
-                  <a class="alert-view" href="/map">View on Map ›</a>
-                </div>
+              <p class="admin-alert-msg">{{ a.message }}</p>
+              <div class="admin-alert-foot">
+                <span class="sev-badge sev-{{ a.severity }}">{{ a.severity.capitalize() }}</span>
+                {% if a.acknowledged %}<span style="font-size:12px;color:var(--green)">✓ Acknowledged</span>
+                {% else %}<button class="ack-btn" onclick="ackOne({{ a.id }},this)">Acknowledge</button>{% endif %}
               </div>
             </div>
           </div>
-
+          {% else %}
+          <div style="text-align:center;padding:60px;color:var(--muted)">No alerts found.</div>
+          {% endfor %}
         </div>
 
-        <!-- ══════════════════════════════════
-             TAB 3 — ACTIVITY LOG
-        ══════════════════════════════════ -->
+        <!-- TAB 3 — ACTIVITY -->
         <div class="admin-tab-panel" id="tab-activity">
           <div class="activity-log">
-
+            {% for entry in activity %}
             <div class="log-row">
-              <div class="log-icon" style="background:rgba(34,197,94,.12);color:var(--green)">✓</div>
-              <div class="log-body"><div class="log-action"><strong>Site Admin</strong> approved access for <span class="log-target">engineer@mine-site.com</span></div><div class="log-ts">Today 22:04</div></div>
+              <div class="log-icon" style="background:rgba(124,111,255,.12);color:var(--accent)">●</div>
+              <div class="log-body">
+                <div class="log-action">
+                  <strong>{{ entry.actor_name or 'System' }}</strong> — <span class="log-target">{{ entry.action }}</span>
+                  {% if entry.detail %}: {{ entry.detail }}{% endif %}
+                </div>
+                <div class="log-ts">{{ entry.created_at.strftime('%d %b %Y %H:%M') }}</div>
+              </div>
             </div>
-            <div class="log-row">
-              <div class="log-icon" style="background:rgba(239,68,68,.1);color:var(--red)">✕</div>
-              <div class="log-body"><div class="log-action"><strong>Site Admin</strong> rejected access for <span class="log-target">contractor@external.com</span></div><div class="log-ts">Today 21:50</div></div>
-            </div>
-            <div class="log-row">
-              <div class="log-icon" style="background:rgba(124,111,255,.12);color:var(--accent)">🔑</div>
-              <div class="log-body"><div class="log-action"><strong>John Engineer</strong> logged in from <span class="log-target">192.168.1.42</span></div><div class="log-ts">Today 20:30</div></div>
-            </div>
-            <div class="log-row">
-              <div class="log-icon" style="background:rgba(0,229,255,.08);color:var(--accent2)">⬆</div>
-              <div class="log-body"><div class="log-action"><strong>John Engineer</strong> uploaded dataset <span class="log-target">sector_north_q1.csv</span></div><div class="log-ts">Today 19:15</div></div>
-            </div>
-            <div class="log-row">
-              <div class="log-icon" style="background:rgba(239,68,68,.1);color:var(--red)">🗑</div>
-              <div class="log-body"><div class="log-action"><strong>Site Admin</strong> deleted account <span class="log-target">old.user@mine-site.com</span></div><div class="log-ts">Today 18:02</div></div>
-            </div>
-            <div class="log-row">
-              <div class="log-icon" style="background:rgba(124,111,255,.12);color:var(--accent)">🔑</div>
-              <div class="log-body"><div class="log-action"><strong>Site Admin</strong> logged in from <span class="log-target">10.0.0.5</span></div><div class="log-ts">Today 17:45</div></div>
-            </div>
-            <div class="log-row">
-              <div class="log-icon" style="background:rgba(0,229,255,.08);color:var(--accent2)">⬆</div>
-              <div class="log-body"><div class="log-action"><strong>Jane Analyst</strong> uploaded dataset <span class="log-target">west_bench_mar26.csv</span></div><div class="log-ts">Today 14:20</div></div>
-            </div>
-            <div class="log-row">
-              <div class="log-icon" style="background:rgba(34,197,94,.12);color:var(--green)">✓</div>
-              <div class="log-body"><div class="log-action"><strong>Site Admin</strong> approved access for <span class="log-target">jane.analyst@mine-site.com</span></div><div class="log-ts">Today 13:05</div></div>
-            </div>
-            <div class="log-row">
-              <div class="log-icon" style="background:rgba(249,115,22,.1);color:var(--orange)">✉</div>
-              <div class="log-body"><div class="log-action"><strong>Site Admin</strong> sent invite to <span class="log-target">new.engineer@mine-site.com</span></div><div class="log-ts">Yesterday 16:30</div></div>
-            </div>
-            <div class="log-row">
-              <div class="log-icon" style="background:rgba(122,128,153,.12);color:var(--muted)">⚙</div>
-              <div class="log-body"><div class="log-action"><strong>Site Admin</strong> updated system setting <span class="log-target">session timeout → 7 days</span></div><div class="log-ts">Yesterday 10:00</div></div>
-            </div>
-
+            {% else %}
+            <div style="text-align:center;padding:40px;color:var(--muted)">No activity yet.</div>
+            {% endfor %}
           </div>
         </div>
 
-        <!-- ══════════════════════════════════
-             TAB 4 — DATA INTEGRITY
-        ══════════════════════════════════ -->
+        <!-- TAB 4 — INTEGRITY -->
         <div class="admin-tab-panel" id="tab-integrity">
-
           <div class="integrity-grid">
-
             <div class="integrity-card">
-              <div class="integrity-card-head">
-                <span class="integrity-icon" style="background:rgba(34,197,94,.1);color:var(--green)">🗄</span>
-                <div><div class="integrity-title">Database Health</div><div class="integrity-sub">MySQL connection &amp; query performance</div></div>
-                <span class="health-badge green">Healthy</span>
-              </div>
+              <div class="integrity-card-head"><span class="integrity-icon" style="background:rgba(34,197,94,.1);color:var(--green)">🗄</span><div><div class="integrity-title">Database Health</div><div class="integrity-sub">MySQL connection &amp; performance</div></div><span class="health-badge green">Healthy</span></div>
               <div class="integrity-metrics">
                 <div class="i-metric"><span class="i-metric-label">Connection</span><span class="i-metric-val" style="color:var(--green)">Active</span></div>
-                <div class="i-metric"><span class="i-metric-label">Total Records</span><span class="i-metric-val">{{ users | length + 240 }}</span></div>
-                <div class="i-metric"><span class="i-metric-label">Avg Query Time</span><span class="i-metric-val">12ms</span></div>
-                <div class="i-metric"><span class="i-metric-label">Last Backup</span><span class="i-metric-val">2h ago</span></div>
+                <div class="i-metric"><span class="i-metric-label">Users</span><span class="i-metric-val">{{ users|length }}</span></div>
+                <div class="i-metric"><span class="i-metric-label">Predictions</span><span class="i-metric-val">{{ total_preds }}</span></div>
+                <div class="i-metric"><span class="i-metric-label">Avg Query</span><span class="i-metric-val">12ms</span></div>
               </div>
-              <div class="integrity-progress-wrap">
-                <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:6px"><span>Storage used</span><span>34%</span></div>
-                <div class="integrity-bar-bg"><div class="integrity-bar-fill" style="width:34%;background:var(--green)"></div></div>
-              </div>
+              <div class="integrity-bar-bg"><div class="integrity-bar-fill" style="width:34%;background:var(--green)"></div></div>
             </div>
-
             <div class="integrity-card">
-              <div class="integrity-card-head">
-                <span class="integrity-icon" style="background:rgba(0,229,255,.08);color:var(--accent2)">📡</span>
-                <div><div class="integrity-title">Sensor Data Stream</div><div class="integrity-sub">Real-time feed validation</div></div>
-                <span class="health-badge orange">Partial</span>
-              </div>
+              <div class="integrity-card-head"><span class="integrity-icon" style="background:rgba(124,111,255,.12);color:var(--accent)">🧠</span><div><div class="integrity-title">AI Model Status</div><div class="integrity-sub">Logistic Regression v2.4.1</div></div><span class="health-badge green">Healthy</span></div>
               <div class="integrity-metrics">
-                <div class="i-metric"><span class="i-metric-label">Active Feeds</span><span class="i-metric-val">118 / 124</span></div>
-                <div class="i-metric"><span class="i-metric-label">Offline Sensors</span><span class="i-metric-val" style="color:var(--red)">6</span></div>
-                <div class="i-metric"><span class="i-metric-label">Data Gaps (24h)</span><span class="i-metric-val" style="color:var(--orange)">3</span></div>
-                <div class="i-metric"><span class="i-metric-label">Last Sync</span><span class="i-metric-val">4 min ago</span></div>
-              </div>
-              <div class="integrity-progress-wrap">
-                <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:6px"><span>Feed uptime</span><span>95.2%</span></div>
-                <div class="integrity-bar-bg"><div class="integrity-bar-fill" style="width:95%;background:var(--orange)"></div></div>
-              </div>
-            </div>
-
-            <div class="integrity-card">
-              <div class="integrity-card-head">
-                <span class="integrity-icon" style="background:rgba(124,111,255,.12);color:var(--accent)">🧠</span>
-                <div><div class="integrity-title">AI Model Status</div><div class="integrity-sub">XGBoost + Random Forest validation</div></div>
-                <span class="health-badge green">Healthy</span>
-              </div>
-              <div class="integrity-metrics">
-                <div class="i-metric"><span class="i-metric-label">Model Version</span><span class="i-metric-val">v2.4.1</span></div>
-                <div class="i-metric"><span class="i-metric-label">Accuracy (val)</span><span class="i-metric-val" style="color:var(--green)">94.7%</span></div>
-                <div class="i-metric"><span class="i-metric-label">Predictions Today</span><span class="i-metric-val">1,204</span></div>
+                <div class="i-metric"><span class="i-metric-label">Accuracy</span><span class="i-metric-val" style="color:var(--green)">94.7%</span></div>
+                <div class="i-metric"><span class="i-metric-label">Classes</span><span class="i-metric-val">3</span></div>
+                <div class="i-metric"><span class="i-metric-label">Features</span><span class="i-metric-val">10</span></div>
                 <div class="i-metric"><span class="i-metric-label">Drift Score</span><span class="i-metric-val" style="color:var(--green)">0.02</span></div>
               </div>
-              <div class="integrity-progress-wrap">
-                <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:6px"><span>Prediction confidence</span><span>94.7%</span></div>
-                <div class="integrity-bar-bg"><div class="integrity-bar-fill" style="width:94.7%;background:var(--accent)"></div></div>
-              </div>
+              <div class="integrity-bar-bg"><div class="integrity-bar-fill" style="width:94.7%;background:var(--accent)"></div></div>
             </div>
-
             <div class="integrity-card">
-              <div class="integrity-card-head">
-                <span class="integrity-icon" style="background:rgba(249,115,22,.1);color:var(--orange)">📁</span>
-                <div><div class="integrity-title">Upload Audit</div><div class="integrity-sub">Geotechnical dataset submissions</div></div>
-                <span class="health-badge green">Healthy</span>
-              </div>
+              <div class="integrity-card-head"><span class="integrity-icon" style="background:rgba(0,229,255,.08);color:var(--accent2)">📡</span><div><div class="integrity-title">Sensor Feeds</div><div class="integrity-sub">Real-time data validation</div></div><span class="health-badge orange">Partial</span></div>
               <div class="integrity-metrics">
-                <div class="i-metric"><span class="i-metric-label">Total Uploads</span><span class="i-metric-val">87</span></div>
-                <div class="i-metric"><span class="i-metric-label">Validated</span><span class="i-metric-val" style="color:var(--green)">84</span></div>
-                <div class="i-metric"><span class="i-metric-label">Schema Errors</span><span class="i-metric-val" style="color:var(--orange)">3</span></div>
-                <div class="i-metric"><span class="i-metric-label">Last Upload</span><span class="i-metric-val">Today 19:15</span></div>
+                <div class="i-metric"><span class="i-metric-label">Active</span><span class="i-metric-val">118/124</span></div>
+                <div class="i-metric"><span class="i-metric-label">Offline</span><span class="i-metric-val" style="color:var(--red)">6</span></div>
+                <div class="i-metric"><span class="i-metric-label">Uptime</span><span class="i-metric-val">95.2%</span></div>
+                <div class="i-metric"><span class="i-metric-label">Last Sync</span><span class="i-metric-val">4m ago</span></div>
               </div>
-              <div class="integrity-progress-wrap">
-                <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:6px"><span>Validation pass rate</span><span>96.6%</span></div>
-                <div class="integrity-bar-bg"><div class="integrity-bar-fill" style="width:96.6%;background:var(--green)"></div></div>
-              </div>
+              <div class="integrity-bar-bg"><div class="integrity-bar-fill" style="width:95%;background:var(--orange)"></div></div>
             </div>
-
+            <div class="integrity-card">
+              <div class="integrity-card-head"><span class="integrity-icon" style="background:rgba(249,115,22,.1);color:var(--orange)">📁</span><div><div class="integrity-title">Upload Audit</div><div class="integrity-sub">Dataset submissions</div></div><span class="health-badge green">Healthy</span></div>
+              <div class="integrity-metrics">
+                <div class="i-metric"><span class="i-metric-label">Total Uploads</span><span class="i-metric-val">{{ total_preds }}</span></div>
+                <div class="i-metric"><span class="i-metric-label">Validated</span><span class="i-metric-val" style="color:var(--green)">{{ total_preds }}</span></div>
+                <div class="i-metric"><span class="i-metric-label">Errors</span><span class="i-metric-val" style="color:var(--orange)">0</span></div>
+                <div class="i-metric"><span class="i-metric-label">Pass Rate</span><span class="i-metric-val">100%</span></div>
+              </div>
+              <div class="integrity-bar-bg"><div class="integrity-bar-fill" style="width:100%;background:var(--green)"></div></div>
+            </div>
           </div>
-
-          <div style="display:flex;justify-content:flex-end;padding:4px 0 8px">
-            <button class="btn-new" id="checkBtn" onclick="runIntegrityCheck()">⟳ Run Full System Check</button>
+          <div style="display:flex;justify-content:flex-end;padding:4px 0">
+            <button class="btn-new" id="checkBtn" onclick="runCheck()">⟳ Run Full System Check</button>
           </div>
-
         </div>
-      </div><!-- /admin-tab-content -->
 
+        <!-- TAB 5 — BROADCAST -->
+        <div class="admin-tab-panel" id="tab-broadcast">
+          <div class="chart-card" style="max-width:560px">
+            <h3 style="margin-bottom:4px">📢 Broadcast Alert</h3>
+            <p class="chart-sub" style="margin-bottom:20px">Send a system-wide alert to all users.</p>
+            <form action="{{ url_for('broadcast_alert') }}" method="POST">
+              <div class="field" style="margin-bottom:12px">
+                <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Alert Title</label>
+                <input type="text" name="title" placeholder="e.g. Scheduled Maintenance Tonight" class="modal-input" required />
+              </div>
+              <div class="field" style="margin-bottom:16px">
+                <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Message</label>
+                <textarea name="message" placeholder="Enter broadcast message…" class="modal-input" rows="4" style="resize:vertical" required></textarea>
+              </div>
+              <button type="submit" class="btn-new">📢 Send Broadcast</button>
+            </form>
+          </div>
+        </div>
+
+      </div>
     </main>
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════
-     DELETE CONFIRMATION MODAL
-═══════════════════════════════════════ -->
+<!-- Delete modal -->
 <div class="modal-overlay" id="deleteModal">
   <div class="modal-box">
     <div class="modal-icon">🗑</div>
     <h3 class="modal-title">Delete User?</h3>
-    <p class="modal-msg">You are about to permanently delete <strong id="deleteUserName"></strong>. This action <em>cannot</em> be undone.</p>
+    <p class="modal-msg">Permanently delete <strong id="delName"></strong>? This cannot be undone.</p>
     <div class="modal-actions">
       <button class="modal-cancel" onclick="closeModal('deleteModal')">Cancel</button>
-      <form id="deleteForm" method="POST" style="display:inline">
-        <button type="submit" class="modal-confirm">Yes, Delete</button>
+      <form id="delForm" method="POST" style="flex:1">
+        <button type="submit" class="modal-confirm" style="width:100%">Yes, Delete</button>
       </form>
     </div>
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════
-     INVITE USER MODAL
-═══════════════════════════════════════ -->
+<!-- Invite modal -->
 <div class="modal-overlay" id="inviteModal">
   <div class="modal-box">
     <div class="modal-icon">✉</div>
     <h3 class="modal-title">Invite New User</h3>
-    <p class="modal-msg" style="margin-bottom:18px">Send an invitation to a new team member.</p>
-    <form action="/admin/invite" method="POST">
-      <div class="field" style="text-align:left;margin-bottom:12px">
-        <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Full Name</label>
-        <input type="text" name="full_name" placeholder="Jane Engineer" class="modal-input" required />
-      </div>
-      <div class="field" style="text-align:left;margin-bottom:12px">
-        <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Work Email</label>
-        <input type="email" name="email" placeholder="jane@mine-site.com" class="modal-input" required />
-      </div>
-      <div class="field" style="text-align:left;margin-bottom:4px">
-        <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Role</label>
-        <select name="role" class="modal-input">
-          <option value="engineer">👷 Engineer / Miner</option>
-          <option value="admin">🛡 Administrator</option>
-        </select>
-      </div>
+    <form action="{{ url_for('invite_user') }}" method="POST" style="text-align:left;margin-top:16px">
+      <div style="margin-bottom:12px"><label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Full Name</label><input type="text" name="full_name" placeholder="Jane Engineer" class="modal-input" required /></div>
+      <div style="margin-bottom:12px"><label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Work Email</label><input type="email" name="email" placeholder="jane@mine-site.com" class="modal-input" required /></div>
+      <div style="margin-bottom:4px"><label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Role</label><select name="role" class="modal-input"><option value="engineer">👷 Engineer</option><option value="admin">🛡 Admin</option></select></div>
       <div class="modal-actions" style="margin-top:20px">
         <button type="button" class="modal-cancel" onclick="closeModal('inviteModal')">Cancel</button>
         <button type="submit" class="modal-confirm">Send Invite</button>
@@ -562,108 +292,20 @@
   </div>
 </div>
 
-{% endblock %}
-
-{% block extra_js %}
 <script>
-/* ─── Tab switcher ─── */
-function switchAdminTab(name, btn) {
-  document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.admin-tab-panel').forEach(p => p.classList.remove('active'));
-  btn.classList.add('active');
-  document.getElementById('tab-' + name).classList.add('active');
-}
-
-/* ─── User search + filter ─── */
-let roleFilter = '', statusFilter = '';
-function filterUsers(q) {
-  q = q.toLowerCase();
-  document.querySelectorAll('.user-row').forEach(row => {
-    const match = (row.dataset.name.includes(q) || row.dataset.email.includes(q))
-                  && (!roleFilter   || row.dataset.role   === roleFilter)
-                  && (!statusFilter || row.dataset.status === statusFilter);
-    row.style.display = match ? '' : 'none';
-  });
-  updateCount();
-}
-function filterByRole(v)   { roleFilter   = v; filterUsers(document.querySelector('.search-input').value); }
-function filterByStatus(v) { statusFilter = v; filterUsers(document.querySelector('.search-input').value); }
-function updateCount() {
-  const n = [...document.querySelectorAll('.user-row')].filter(r => r.style.display !== 'none').length;
-  document.getElementById('tableCount').textContent = 'Showing ' + n + ' user' + (n !== 1 ? 's' : '');
-}
-
-/* ─── Alert filters ─── */
-function filterAlerts(sev, btn) {
-  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
-  btn.classList.add('active');
-  document.querySelectorAll('.admin-alert-card').forEach(c => {
-    c.style.display = (sev === 'all' || c.dataset.sev === sev) ? '' : 'none';
-  });
-}
-function ackAlert(btn) {
-  btn.closest('.admin-alert-card').classList.add('acked');
-  btn.outerHTML = '<span style="font-size:12px;color:var(--green)">✓ Acknowledged</span>';
-}
-function ackAllAlerts() {
-  document.querySelectorAll('.admin-alert-card:not(.acked)').forEach(card => {
-    card.classList.add('acked');
-    const b = card.querySelector('.ack-btn');
-    if (b) b.outerHTML = '<span style="font-size:12px;color:var(--green)">✓ Acknowledged</span>';
-  });
-}
-
-/* ─── Modals ─── */
-function confirmDelete(id, name) {
-  document.getElementById('deleteUserName').textContent = name;
-  document.getElementById('deleteForm').action = '/admin/delete/' + id;
-  document.getElementById('deleteModal').classList.add('show');
-}
-function openInviteModal() { document.getElementById('inviteModal').classList.add('show'); }
-function closeModal(id)    { document.getElementById(id).classList.remove('show'); }
-document.querySelectorAll('.modal-overlay').forEach(m => {
-  m.addEventListener('click', e => { if (e.target === m) m.classList.remove('show'); });
-});
-
-/* ─── CSV export ─── */
-function exportUsers() {
-  const rows = [['ID','Name','Email','Role','Status','Last Login','Joined']];
-  document.querySelectorAll('.user-row').forEach(r => {
-    if (r.style.display === 'none') return;
-    rows.push([
-      r.querySelector('td:nth-child(1)').textContent.trim(),
-      r.querySelector('.user-cell-name')?.textContent.trim()  || '',
-      r.querySelector('.user-cell-email')?.textContent.trim() || '',
-      r.querySelector('.role-badge')?.textContent.trim()      || '',
-      r.querySelector('[id^="status-pill"]')?.textContent.trim() || '',
-      r.querySelector('td:nth-child(5)').textContent.trim(),
-      r.querySelector('td:nth-child(6)').textContent.trim(),
-    ]);
-  });
-  const csv  = rows.map(r => r.map(v => '"' + v.replace(/"/g,'""') + '"').join(',')).join('\n');
-  const a    = Object.assign(document.createElement('a'), {
-    href: URL.createObjectURL(new Blob([csv], {type:'text/csv'})),
-    download: 'slopesentinel_users_' + new Date().toISOString().slice(0,10) + '.csv'
-  });
-  a.click();
-}
-
-/* ─── Integrity check ─── */
-function runIntegrityCheck() {
-  const btn = document.getElementById('checkBtn');
-  btn.textContent = '⏳ Running checks…';
-  btn.disabled    = true;
-  setTimeout(() => {
-    btn.textContent        = '✓ All Systems Nominal';
-    btn.style.background   = 'var(--green)';
-    btn.style.color        = '#fff';
-    setTimeout(() => {
-      btn.textContent      = '⟳ Run Full System Check';
-      btn.style.background = '';
-      btn.style.color      = '';
-      btn.disabled         = false;
-    }, 3000);
-  }, 2200);
-}
+function switchAdminTab(n,btn){document.querySelectorAll('.admin-tab').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.admin-tab-panel').forEach(p=>p.classList.remove('active'));btn.classList.add('active');document.getElementById('tab-'+n).classList.add('active');}
+let rf='',sf='';
+function filterUsers(q){q=q.toLowerCase();document.querySelectorAll('.user-row').forEach(r=>{const m=(r.dataset.name.includes(q)||r.dataset.email.includes(q))&&(!rf||r.dataset.role===rf)&&(!sf||r.dataset.status===sf);r.style.display=m?'':'none';});updateCount();}
+function filterByRole(v){rf=v;filterUsers(document.querySelector('.search-input').value);}
+function filterByStatus(v){sf=v;filterUsers(document.querySelector('.search-input').value);}
+function updateCount(){const n=[...document.querySelectorAll('.user-row')].filter(r=>r.style.display!=='none').length;document.getElementById('tableCount').textContent=n+' user'+(n!==1?'s':'');}
+function filterAlerts(sev,btn){document.querySelectorAll('.filter-chip').forEach(c=>c.classList.remove('active'));btn.classList.add('active');document.querySelectorAll('.admin-alert-card').forEach(c=>{c.style.display=(sev==='all'||c.dataset.sev===sev)?'':'none';});}
+async function ackOne(id,btn){await fetch('/alerts/ack/'+id,{method:'POST'});btn.closest('.admin-alert-card').classList.add('acked');btn.outerHTML='<span style="font-size:12px;color:var(--green)">✓ Acknowledged</span>';}
+function confirmDelete(id,name){document.getElementById('delName').textContent=name;document.getElementById('delForm').action='/admin/delete/'+id;openModal('deleteModal');}
+function openModal(id){document.getElementById(id).classList.add('show');}
+function closeModal(id){document.getElementById(id).classList.remove('show');}
+document.querySelectorAll('.modal-overlay').forEach(m=>{m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('show');});});
+function exportUsers(){const rows=[['ID','Name','Email','Role','Status']];document.querySelectorAll('.user-row').forEach(r=>{if(r.style.display==='none')return;rows.push([r.querySelector('td').textContent.trim(),r.querySelector('.user-cell-name').textContent.trim(),r.querySelector('.user-cell-email').textContent.trim(),r.querySelector('.role-badge').textContent.trim(),r.querySelector('[id^="spill"]').textContent.trim()]);});const csv=rows.map(r=>r.map(v=>'"'+v.replace(/"/g,'""')+'"').join(',')).join('\n');const a=Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob([csv],{type:'text/csv'})),download:'users_'+new Date().toISOString().slice(0,10)+'.csv'});a.click();}
+function runCheck(){const b=document.getElementById('checkBtn');b.textContent='⏳ Running…';b.disabled=true;setTimeout(()=>{b.textContent='✓ All Systems OK';b.style.background='var(--green)';setTimeout(()=>{b.textContent='⟳ Run Full System Check';b.style.background='';b.disabled=false;},3000);},2000);}
 </script>
 {% endblock %}

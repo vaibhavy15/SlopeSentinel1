@@ -1,11 +1,129 @@
-<link rel="stylesheet" href="/static/style.css">
+{% extends "base.html" %}
+{% block title %}Mine Map — SlopeSentinel{% endblock %}
+{% block body %}
+<div id="dashboard">
+  <div class="dash-layout">
+    {% set active='map' %}{% include '_sidebar.html' %}
 
-<div class="dashboard">
-<h2>Mine Map</h2>
+    <main class="main-panel">
+      <div class="page-header">
+        <div class="page-title">
+          <h2>Geospatial Mine Visualization</h2>
+          <p>Interactive risk mapping across all monitored pit sectors.</p>
+        </div>
+        <div class="header-actions">
+          <div class="legend" style="gap:14px">
+            <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div>Safe</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div>Caution</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div>Critical</div>
+          </div>
+        </div>
+      </div>
 
-<div>
-{{ map|safe }}
+      <div style="padding:0 32px 32px">
+        <div class="chart-card" style="padding:0;overflow:hidden">
+          <!-- SVG mine map -->
+          <div style="position:relative;background:#0a0c10;min-height:460px">
+            <div class="map-controls">
+              <div class="map-btn" title="Layers">⊞</div>
+              <div class="map-btn" title="Fullscreen">⛶</div>
+              <div class="map-btn" title="Reset">↺</div>
+            </div>
+            <svg viewBox="0 0 800 460" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:460px">
+              <defs>
+                <radialGradient id="bg" cx="50%" cy="50%"><stop offset="0%" stop-color="#1a1d27"/><stop offset="100%" stop-color="#0a0c10"/></radialGradient>
+                <filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+              </defs>
+              <rect width="800" height="460" fill="url(#bg)"/>
+              <g stroke="rgba(255,255,255,0.04)" stroke-width="1">
+                <line x1="0" y1="76"  x2="800" y2="76"/> <line x1="0" y1="153" x2="800" y2="153"/>
+                <line x1="0" y1="230" x2="800" y2="230"/> <line x1="0" y1="307" x2="800" y2="307"/>
+                <line x1="0" y1="384" x2="800" y2="384"/>
+                <line x1="100" y1="0" x2="100" y2="460"/> <line x1="200" y1="0" x2="200" y2="460"/>
+                <line x1="300" y1="0" x2="300" y2="460"/> <line x1="400" y1="0" x2="400" y2="460"/>
+                <line x1="500" y1="0" x2="500" y2="460"/> <line x1="600" y1="0" x2="600" y2="460"/>
+                <line x1="700" y1="0" x2="700" y2="460"/>
+              </g>
+              <!-- Pit rings -->
+              <ellipse cx="400" cy="230" rx="320" ry="190" fill="none" stroke="rgba(124,111,255,0.18)" stroke-width="1.5" stroke-dasharray="7 4"/>
+              <ellipse cx="400" cy="230" rx="225" ry="125" fill="none" stroke="rgba(124,111,255,0.12)" stroke-width="1"   stroke-dasharray="4 4"/>
+              <ellipse cx="400" cy="230" rx="130" ry="70"  fill="none" stroke="rgba(124,111,255,0.08)" stroke-width="1"   stroke-dasharray="3 4"/>
+              <!-- Roads -->
+              <path d="M60 420 Q200 350 400 310 Q570 270 720 320" stroke="rgba(255,255,255,0.07)" stroke-width="3" fill="none" stroke-dasharray="8 4"/>
+              <path d="M130 40  Q260 110 400 140 Q560 170 680 120" stroke="rgba(255,255,255,0.05)" stroke-width="2" fill="none" stroke-dasharray="6 4"/>
+              <!-- Safe markers -->
+              <g onclick="selectMapSite('North Pit Alpha','safe','45.2','-73.8','85')" class="map-marker" filter="url(#glow)">
+                <circle cx="240" cy="130" r="14" fill="rgba(34,197,94,0.2)" stroke="#22c55e" stroke-width="2"/>
+                <circle cx="240" cy="130" r="6" fill="#22c55e"/>
+                <text x="240" y="114" text-anchor="middle" fill="#22c55e" font-size="11" font-family="DM Sans">N-Alpha</text>
+              </g>
+              <g onclick="selectMapSite('West Bench B2','safe','45.1','-74.0','78')" class="map-marker" filter="url(#glow)">
+                <circle cx="140" cy="250" r="14" fill="rgba(34,197,94,0.2)" stroke="#22c55e" stroke-width="2"/>
+                <circle cx="140" cy="250" r="6" fill="#22c55e"/>
+                <text x="140" y="234" text-anchor="middle" fill="#22c55e" font-size="11" font-family="DM Sans">W-B2</text>
+              </g>
+              <g onclick="selectMapSite('South Rim S1','safe','44.9','-73.7','91')" class="map-marker" filter="url(#glow)">
+                <circle cx="400" cy="370" r="14" fill="rgba(34,197,94,0.2)" stroke="#22c55e" stroke-width="2"/>
+                <circle cx="400" cy="370" r="6" fill="#22c55e"/>
+                <text x="400" y="354" text-anchor="middle" fill="#22c55e" font-size="11" font-family="DM Sans">S-Rim</text>
+              </g>
+              <!-- Caution markers -->
+              <g onclick="selectMapSite('East Corridor C3','caution','45.3','-73.6','58')" class="map-marker" filter="url(#glow)">
+                <circle cx="610" cy="165" r="15" fill="rgba(249,115,22,0.2)" stroke="#f97316" stroke-width="2"/>
+                <circle cx="610" cy="165" r="6" fill="#f97316"/>
+                <text x="610" y="148" text-anchor="middle" fill="#f97316" font-size="11" font-family="DM Sans">E-C3</text>
+              </g>
+              <g onclick="selectMapSite('Central Zone','caution','45.2','-73.9','62')" class="map-marker" filter="url(#glow)">
+                <circle cx="400" cy="230" r="15" fill="rgba(249,115,22,0.2)" stroke="#f97316" stroke-width="2"/>
+                <circle cx="400" cy="230" r="6" fill="#f97316"/>
+                <text x="400" y="213" text-anchor="middle" fill="#f97316" font-size="11" font-family="DM Sans">C-Zone</text>
+              </g>
+              <!-- Critical marker -->
+              <g onclick="selectMapSite('Eastern Haul Road','critical','45.4','-73.5','23')" class="map-marker" filter="url(#glow)">
+                <circle cx="680" cy="295" r="16" fill="rgba(239,68,68,0.25)" stroke="#ef4444" stroke-width="2.5"/>
+                <circle cx="680" cy="295" r="7" fill="#ef4444"/>
+                <text x="680" y="277" text-anchor="middle" fill="#ef4444" font-size="11" font-weight="bold" font-family="DM Sans">E-Haul ⚠</text>
+              </g>
+              <!-- Dynamic prediction markers rendered by JS -->
+              <g id="dynMarkers"></g>
+            </svg>
+          </div>
+        </div>
+
+        <!-- Selected site panel -->
+        <div id="siteInfoPanel" style="display:none;margin-top:16px">
+          <div class="chart-card">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start">
+              <div>
+                <div id="siName" style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700"></div>
+                <div id="siBadge" class="risk-badge" style="margin-top:6px"></div>
+              </div>
+              <button onclick="document.getElementById('siteInfoPanel').style.display='none'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px">✕</button>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:16px">
+              <div class="stat-mini"><span class="stat-mini-label">Coordinates</span><span class="stat-mini-val" id="siCoords"></span></div>
+              <div class="stat-mini"><span class="stat-mini-label">Safe Score</span><span class="stat-mini-val" id="siSafe"></span></div>
+              <div class="stat-mini"><span class="stat-mini-label">Last Updated</span><span class="stat-mini-val">2 min ago</span></div>
+              <div class="stat-mini"><span class="stat-mini-label">Sensors Active</span><span class="stat-mini-val">8</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
 </div>
 
-<a href="/dashboard">Back</a>
-</div>
+<script>
+const predData = {{ predictions|safe }};
+
+function selectMapSite(name, risk, lat, lng, safe) {
+  document.getElementById('siteInfoPanel').style.display='';
+  document.getElementById('siName').textContent = name;
+  const b = document.getElementById('siBadge');
+  b.textContent = risk.charAt(0).toUpperCase()+risk.slice(1);
+  b.className = 'risk-badge ' + risk;
+  document.getElementById('siCoords').textContent = lat+'°N '+lng+'°W';
+  document.getElementById('siSafe').textContent   = safe+'%';
+}
+</script>
+{% endblock %}

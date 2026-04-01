@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Not Found — SlopeSentinel{% endblock %}
+{% block body %}
+<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:40px">
+  <div>
+    <div style="font-size:64px;margin-bottom:16px">⛰</div>
+    <h1 style="font-family:'Syne',sans-serif;font-size:40px;font-weight:800;margin-bottom:8px">{{ code or 404 }}</h1>
+    <p style="color:var(--muted);margin-bottom:24px">{{ msg or 'Page not found.' }}</p>
+    <a href="/" class="btn-cta" style="display:inline-flex">← Back to Home</a>
+  </div>
+</div>
+{% endblock %}

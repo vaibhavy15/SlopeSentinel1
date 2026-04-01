@@ -1,13 +1,98 @@
-<link rel="stylesheet" href="/static/style.css">
+{% extends "base.html" %}
+{% block title %}Alerts — SlopeSentinel{% endblock %}
+{% block body %}
+<div id="dashboard">
+  <div class="dash-layout">
+    {% set active='alerts' %}{% include '_sidebar.html' %}
 
-<div class="dashboard">
-<h2>Alerts</h2>
+    <main class="main-panel">
+      <div class="page-header">
+        <div class="page-title">
+          <h2>Security Alerts</h2>
+          <p>Automated AI risk detection event log — {{ unread }} unacknowledged.</p>
+        </div>
+        <div class="header-actions">
+          {% if alerts %}
+          <button class="btn-secondary" onclick="ackAll()">✓ Acknowledge All</button>
+          {% endif %}
+        </div>
+      </div>
 
-<ul>
-{% for a in alerts %}
-<li>{{a.msg}} - <b>{{a.level}}</b></li>
-{% endfor %}
-</ul>
+      <div style="padding:0 32px 32px">
 
-<a href="/dashboard">Back</a>
+        <!-- Filter chips -->
+        <div class="alerts-toolbar">
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="filter-chip active" onclick="filterAlerts('all',this)">All ({{ alerts|length }})</button>
+            <button class="filter-chip" onclick="filterAlerts('critical',this)">🚨 Critical</button>
+            <button class="filter-chip" onclick="filterAlerts('warning',this)">⚠️ Warning</button>
+            <button class="filter-chip" onclick="filterAlerts('info',this)">ℹ️ Info</button>
+          </div>
+          <span class="table-count">{{ unread }} unread</span>
+        </div>
+
+        {% if alerts %}
+          {% for a in alerts %}
+          <div class="admin-alert-card sev-{{ a.severity }} {% if a.acknowledged %}acked{% endif %}"
+               data-sev="{{ a.severity }}" id="alert-{{ a.id }}">
+            <div class="admin-alert-icon sev-{{ a.severity }}-icon">
+              {% if a.severity=='critical' %}🚨{% elif a.severity=='warning' %}⚠️{% else %}ℹ️{% endif %}
+            </div>
+            <div class="admin-alert-body">
+              <div class="admin-alert-top">
+                <span class="admin-alert-title">{{ a.title }}</span>
+                <div class="admin-alert-meta">
+                  <span>📍 {{ a.site_id }}</span>
+                  <span>🕐 {{ a.created_at.strftime('%d %b %Y %H:%M') }}</span>
+                </div>
+              </div>
+              <p class="admin-alert-msg">{{ a.message }}</p>
+              <div class="admin-alert-foot">
+                <span class="sev-badge sev-{{ a.severity }}">{{ a.severity.capitalize() }}</span>
+                {% if a.acknowledged %}
+                  <span style="font-size:12px;color:var(--green)">✓ Acknowledged</span>
+                {% else %}
+                  <button class="ack-btn" onclick="ackAlert({{ a.id }},this)">Acknowledge</button>
+                {% endif %}
+                {% if a.prediction_id %}
+                  <a class="alert-view" href="{{ url_for('analysis') }}">View Analysis ›</a>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div style="text-align:center;padding:80px;color:var(--muted)">
+            <div style="font-size:40px;margin-bottom:12px">✅</div>
+            <div style="font-size:16px;font-weight:500">All clear — no alerts at this time.</div>
+          </div>
+        {% endif %}
+      </div>
+    </main>
+  </div>
 </div>
+
+<script>
+function filterAlerts(sev, btn) {
+  document.querySelectorAll('.filter-chip').forEach(c=>c.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.admin-alert-card').forEach(c=>{
+    c.style.display = (sev==='all'||c.dataset.sev===sev)?'':'none';
+  });
+}
+async function ackAlert(id, btn) {
+  await fetch('/alerts/ack/'+id, {method:'POST'});
+  const card = document.getElementById('alert-'+id);
+  card.classList.add('acked');
+  btn.outerHTML = '<span style="font-size:12px;color:var(--green)">✓ Acknowledged</span>';
+}
+async function ackAll() {
+  await fetch('/alerts/ack-all', {method:'POST'});
+  document.querySelectorAll('.admin-alert-card').forEach(c=>{
+    c.classList.add('acked');
+    const b=c.querySelector('.ack-btn');
+    if(b) b.outerHTML='<span style="font-size:12px;color:var(--green)">✓ Acknowledged</span>';
+  });
+}
+</script>
+{% endblock %}
