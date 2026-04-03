@@ -1,114 +1,426 @@
 {% extends "base.html" %}
 {% block title %}Mine Map — SlopeSentinel{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ── Map layout fills available height ── */
+.map-outer {
+  display: flex; flex-direction: column;
+  height: calc(100vh - 100px);   /* viewport minus page-header */
+  padding: 0 32px 24px;
+  gap: 16px;
+}
+.map-body {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  flex: 1; gap: 16px; min-height: 0;
+}
+
+/* ── SVG canvas card ── */
+.map-canvas-wrap {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 14px; overflow: hidden;
+  position: relative; display: flex; flex-direction: column;
+}
+.map-svg-area { flex: 1; position: relative; }
+.map-svg-area svg { width: 100%; height: 100%; display: block; }
+.map-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+  background: var(--bg3);
+}
+.map-toolbar-left { display: flex; align-items: center; gap: 8px; }
+.map-toolbar-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.map-toolbar-sub   { font-size: 11px; color: var(--muted); }
+.map-btns { display: flex; gap: 6px; }
+.map-btn-sm {
+  width: 30px; height: 30px; background: var(--bg2);
+  border: 1px solid var(--border); border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; font-size: 13px; transition: background .2s, border-color .2s;
+}
+.map-btn-sm:hover { background: var(--bg3); border-color: var(--accent); }
+
+/* Tooltip */
+#map-tooltip {
+  position: absolute; z-index: 20; pointer-events: none;
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 9px; padding: 10px 13px;
+  font-size: 12px; color: var(--text); white-space: nowrap;
+  box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  display: none;
+}
+#map-tooltip .tt-title { font-weight: 600; margin-bottom: 3px; }
+#map-tooltip .tt-risk  { font-size: 11px; }
+
+/* ── Side panel ── */
+.map-side {
+  display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow-y: auto;
+}
+.map-side::-webkit-scrollbar { width: 4px; }
+.map-side::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 2px; }
+
+.side-card {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 14px; overflow: hidden; flex-shrink: 0;
+}
+.side-card-head {
+  padding: 14px 16px; border-bottom: 1px solid var(--border);
+  font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.side-card-body { padding: 14px 16px; }
+
+/* Selected site panel */
+#selected-none {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 32px 16px; text-align: center; color: var(--muted); font-size: 13px; gap: 8px;
+}
+#selected-none span { font-size: 28px; }
+#selected-detail { display: none; }
+.sd-name { font-family: 'Syne', sans-serif; font-size: 17px; font-weight: 700; margin-bottom: 6px; }
+.sd-badge {
+  display: inline-block; padding: 3px 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; margin-bottom: 14px;
+}
+.sd-badge.safe     { background: rgba(34,197,94,.15);  color: var(--green);  }
+.sd-badge.caution  { background: rgba(249,115,22,.15); color: var(--orange); }
+.sd-badge.critical { background: rgba(239,68,68,.15);  color: var(--red);    }
+.sd-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+.sd-row:last-child { border-bottom: none; }
+.sd-lbl { color: var(--muted); }
+.sd-val { font-weight: 500; }
+
+/* Stats summary */
+.risk-summary { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
+.rs-cell {
+  border-radius: 9px; padding: 10px; text-align: center; border: 1px solid;
+}
+.rs-cell.safe     { background: rgba(34,197,94,.07);  border-color: rgba(34,197,94,.18);  }
+.rs-cell.caution  { background: rgba(249,115,22,.06); border-color: rgba(249,115,22,.18); }
+.rs-cell.critical { background: rgba(239,68,68,.06);  border-color: rgba(239,68,68,.18);  }
+.rs-val { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800; }
+.rs-val.safe     { color: var(--green);  }
+.rs-val.caution  { color: var(--orange); }
+.rs-val.critical { color: var(--red);    }
+.rs-lbl { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+/* Recent sites list */
+.site-list-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 0; border-bottom: 1px solid var(--border);
+  cursor: pointer; transition: background .15s; border-radius: 6px;
+  padding-left: 6px; padding-right: 6px;
+}
+.site-list-item:last-child { border-bottom: none; }
+.site-list-item:hover { background: rgba(255,255,255,.03); }
+.sli-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.sli-name { font-size: 12.5px; font-weight: 500; flex: 1; }
+.sli-score { font-size: 11px; color: var(--muted); }
+
+/* Map marker hover */
+.mine-marker { cursor: pointer; }
+.mine-marker:hover .marker-outer { opacity: .9; }
+</style>
+{% endblock %}
+
 {% block body %}
 <div id="dashboard">
   <div class="dash-layout">
     {% set active='map' %}{% include '_sidebar.html' %}
 
     <main class="main-panel">
+
+      <!-- Header -->
       <div class="page-header">
         <div class="page-title">
           <h2>Geospatial Mine Visualization</h2>
-          <p>Interactive risk mapping across all monitored pit sectors.</p>
+          <p>Interactive risk mapping — click any marker to inspect.</p>
         </div>
-        <div class="header-actions">
-          <div class="legend" style="gap:14px">
-            <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div>Safe</div>
-            <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div>Caution</div>
-            <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div>Critical</div>
+        <div class="header-actions" style="align-items:center;gap:18px">
+          <!-- Legend -->
+          <div style="display:flex;gap:14px;align-items:center">
+            <div style="display:flex;align-items:center;gap:5px;font-size:12px">
+              <div style="width:9px;height:9px;border-radius:50%;background:var(--green)"></div>Safe
+            </div>
+            <div style="display:flex;align-items:center;gap:5px;font-size:12px">
+              <div style="width:9px;height:9px;border-radius:50%;background:var(--orange)"></div>Caution
+            </div>
+            <div style="display:flex;align-items:center;gap:5px;font-size:12px">
+              <div style="width:9px;height:9px;border-radius:50%;background:var(--red)"></div>Critical
+            </div>
           </div>
+          <a href="{{ url_for('upload_page') }}" class="btn-new">+ Add Predictions</a>
         </div>
       </div>
 
-      <div style="padding:0 32px 32px">
-        <div class="chart-card" style="padding:0;overflow:hidden">
-          <!-- SVG mine map -->
-          <div style="position:relative;background:#0a0c10;min-height:460px">
-            <div class="map-controls">
-              <div class="map-btn" title="Layers">⊞</div>
-              <div class="map-btn" title="Fullscreen">⛶</div>
-              <div class="map-btn" title="Reset">↺</div>
-            </div>
-            <svg viewBox="0 0 800 460" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:460px">
-              <defs>
-                <radialGradient id="bg" cx="50%" cy="50%"><stop offset="0%" stop-color="#1a1d27"/><stop offset="100%" stop-color="#0a0c10"/></radialGradient>
-                <filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-              </defs>
-              <rect width="800" height="460" fill="url(#bg)"/>
-              <g stroke="rgba(255,255,255,0.04)" stroke-width="1">
-                <line x1="0" y1="76"  x2="800" y2="76"/> <line x1="0" y1="153" x2="800" y2="153"/>
-                <line x1="0" y1="230" x2="800" y2="230"/> <line x1="0" y1="307" x2="800" y2="307"/>
-                <line x1="0" y1="384" x2="800" y2="384"/>
-                <line x1="100" y1="0" x2="100" y2="460"/> <line x1="200" y1="0" x2="200" y2="460"/>
-                <line x1="300" y1="0" x2="300" y2="460"/> <line x1="400" y1="0" x2="400" y2="460"/>
-                <line x1="500" y1="0" x2="500" y2="460"/> <line x1="600" y1="0" x2="600" y2="460"/>
-                <line x1="700" y1="0" x2="700" y2="460"/>
-              </g>
-              <!-- Pit rings -->
-              <ellipse cx="400" cy="230" rx="320" ry="190" fill="none" stroke="rgba(124,111,255,0.18)" stroke-width="1.5" stroke-dasharray="7 4"/>
-              <ellipse cx="400" cy="230" rx="225" ry="125" fill="none" stroke="rgba(124,111,255,0.12)" stroke-width="1"   stroke-dasharray="4 4"/>
-              <ellipse cx="400" cy="230" rx="130" ry="70"  fill="none" stroke="rgba(124,111,255,0.08)" stroke-width="1"   stroke-dasharray="3 4"/>
-              <!-- Roads -->
-              <path d="M60 420 Q200 350 400 310 Q570 270 720 320" stroke="rgba(255,255,255,0.07)" stroke-width="3" fill="none" stroke-dasharray="8 4"/>
-              <path d="M130 40  Q260 110 400 140 Q560 170 680 120" stroke="rgba(255,255,255,0.05)" stroke-width="2" fill="none" stroke-dasharray="6 4"/>
-              <!-- Safe markers -->
-              <g onclick="selectMapSite('North Pit Alpha','safe','45.2','-73.8','85')" class="map-marker" filter="url(#glow)">
-                <circle cx="240" cy="130" r="14" fill="rgba(34,197,94,0.2)" stroke="#22c55e" stroke-width="2"/>
-                <circle cx="240" cy="130" r="6" fill="#22c55e"/>
-                <text x="240" y="114" text-anchor="middle" fill="#22c55e" font-size="11" font-family="DM Sans">N-Alpha</text>
-              </g>
-              <g onclick="selectMapSite('West Bench B2','safe','45.1','-74.0','78')" class="map-marker" filter="url(#glow)">
-                <circle cx="140" cy="250" r="14" fill="rgba(34,197,94,0.2)" stroke="#22c55e" stroke-width="2"/>
-                <circle cx="140" cy="250" r="6" fill="#22c55e"/>
-                <text x="140" y="234" text-anchor="middle" fill="#22c55e" font-size="11" font-family="DM Sans">W-B2</text>
-              </g>
-              <g onclick="selectMapSite('South Rim S1','safe','44.9','-73.7','91')" class="map-marker" filter="url(#glow)">
-                <circle cx="400" cy="370" r="14" fill="rgba(34,197,94,0.2)" stroke="#22c55e" stroke-width="2"/>
-                <circle cx="400" cy="370" r="6" fill="#22c55e"/>
-                <text x="400" y="354" text-anchor="middle" fill="#22c55e" font-size="11" font-family="DM Sans">S-Rim</text>
-              </g>
-              <!-- Caution markers -->
-              <g onclick="selectMapSite('East Corridor C3','caution','45.3','-73.6','58')" class="map-marker" filter="url(#glow)">
-                <circle cx="610" cy="165" r="15" fill="rgba(249,115,22,0.2)" stroke="#f97316" stroke-width="2"/>
-                <circle cx="610" cy="165" r="6" fill="#f97316"/>
-                <text x="610" y="148" text-anchor="middle" fill="#f97316" font-size="11" font-family="DM Sans">E-C3</text>
-              </g>
-              <g onclick="selectMapSite('Central Zone','caution','45.2','-73.9','62')" class="map-marker" filter="url(#glow)">
-                <circle cx="400" cy="230" r="15" fill="rgba(249,115,22,0.2)" stroke="#f97316" stroke-width="2"/>
-                <circle cx="400" cy="230" r="6" fill="#f97316"/>
-                <text x="400" y="213" text-anchor="middle" fill="#f97316" font-size="11" font-family="DM Sans">C-Zone</text>
-              </g>
-              <!-- Critical marker -->
-              <g onclick="selectMapSite('Eastern Haul Road','critical','45.4','-73.5','23')" class="map-marker" filter="url(#glow)">
-                <circle cx="680" cy="295" r="16" fill="rgba(239,68,68,0.25)" stroke="#ef4444" stroke-width="2.5"/>
-                <circle cx="680" cy="295" r="7" fill="#ef4444"/>
-                <text x="680" y="277" text-anchor="middle" fill="#ef4444" font-size="11" font-weight="bold" font-family="DM Sans">E-Haul ⚠</text>
-              </g>
-              <!-- Dynamic prediction markers rendered by JS -->
-              <g id="dynMarkers"></g>
-            </svg>
-          </div>
-        </div>
+      <!-- Map + side panel -->
+      <div class="map-outer">
+        <div class="map-body">
 
-        <!-- Selected site panel -->
-        <div id="siteInfoPanel" style="display:none;margin-top:16px">
-          <div class="chart-card">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start">
-              <div>
-                <div id="siName" style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700"></div>
-                <div id="siBadge" class="risk-badge" style="margin-top:6px"></div>
+          <!-- ── SVG Map Canvas ── -->
+          <div class="map-canvas-wrap">
+            <div class="map-toolbar">
+              <div class="map-toolbar-left">
+                <div>
+                  <div class="map-toolbar-title">Open-Pit Mine Sectors</div>
+                  <div class="map-toolbar-sub" id="marker-count">Loading markers…</div>
+                </div>
               </div>
-              <button onclick="document.getElementById('siteInfoPanel').style.display='none'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px">✕</button>
+              <div class="map-btns">
+                <div class="map-btn-sm" title="Reset view" onclick="resetView()">↺</div>
+                <div class="map-btn-sm" title="Zoom in"  onclick="zoomMap(1.2)">+</div>
+                <div class="map-btn-sm" title="Zoom out" onclick="zoomMap(0.8)">−</div>
+              </div>
             </div>
-            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:16px">
-              <div class="stat-mini"><span class="stat-mini-label">Coordinates</span><span class="stat-mini-val" id="siCoords"></span></div>
-              <div class="stat-mini"><span class="stat-mini-label">Safe Score</span><span class="stat-mini-val" id="siSafe"></span></div>
-              <div class="stat-mini"><span class="stat-mini-label">Last Updated</span><span class="stat-mini-val">2 min ago</span></div>
-              <div class="stat-mini"><span class="stat-mini-label">Sensors Active</span><span class="stat-mini-val">8</span></div>
+
+            <div class="map-svg-area" id="svgArea">
+              <!-- Tooltip -->
+              <div id="map-tooltip">
+                <div class="tt-title" id="tt-title"></div>
+                <div class="tt-risk"  id="tt-risk"></div>
+              </div>
+
+              <svg id="mine-svg" viewBox="0 0 900 520"
+                   xmlns="http://www.w3.org/2000/svg"
+                   style="width:100%;height:100%">
+                <defs>
+                  <radialGradient id="pitBg" cx="50%" cy="50%">
+                    <stop offset="0%"   stop-color="#171a24"/>
+                    <stop offset="100%" stop-color="#0d0f14"/>
+                  </radialGradient>
+                  <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+                    <feGaussianBlur stdDeviation="3.5" result="blur"/>
+                    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                  </filter>
+                  <filter id="glowStrong" x="-80%" y="-80%" width="260%" height="260%">
+                    <feGaussianBlur stdDeviation="5" result="blur"/>
+                    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                  </filter>
+                </defs>
+
+                <!-- Background -->
+                <rect width="900" height="520" fill="url(#pitBg)"/>
+
+                <!-- Grid -->
+                <g id="grid" stroke="rgba(255,255,255,0.035)" stroke-width="1">
+                  <line x1="0" y1="86"  x2="900" y2="86"/>
+                  <line x1="0" y1="173" x2="900" y2="173"/>
+                  <line x1="0" y1="260" x2="900" y2="260"/>
+                  <line x1="0" y1="347" x2="900" y2="347"/>
+                  <line x1="0" y1="434" x2="900" y2="434"/>
+                  <line x1="112" y1="0" x2="112" y2="520"/>
+                  <line x1="225" y1="0" x2="225" y2="520"/>
+                  <line x1="337" y1="0" x2="337" y2="520"/>
+                  <line x1="450" y1="0" x2="450" y2="520"/>
+                  <line x1="562" y1="0" x2="562" y2="520"/>
+                  <line x1="675" y1="0" x2="675" y2="520"/>
+                  <line x1="787" y1="0" x2="787" y2="520"/>
+                </g>
+
+                <!-- ── Open-pit concentric terraces ── -->
+                <!-- Outermost terrace -->
+                <ellipse cx="450" cy="260" rx="380" ry="220"
+                  fill="none" stroke="rgba(124,111,255,0.22)" stroke-width="1.5" stroke-dasharray="8 5"/>
+                <!-- 2nd terrace -->
+                <ellipse cx="450" cy="260" rx="300" ry="168"
+                  fill="none" stroke="rgba(124,111,255,0.16)" stroke-width="1.2" stroke-dasharray="6 4"/>
+                <!-- 3rd terrace -->
+                <ellipse cx="450" cy="260" rx="210" ry="115"
+                  fill="none" stroke="rgba(124,111,255,0.11)" stroke-width="1" stroke-dasharray="4 4"/>
+                <!-- 4th terrace -->
+                <ellipse cx="450" cy="260" rx="125" ry="68"
+                  fill="none" stroke="rgba(124,111,255,0.07)" stroke-width="0.8" stroke-dasharray="3 3"/>
+                <!-- Pit floor -->
+                <ellipse cx="450" cy="260" rx="55" ry="30"
+                  fill="rgba(10,12,18,0.7)" stroke="rgba(124,111,255,0.05)" stroke-width="0.5"/>
+
+                <!-- ── Radial bench-cut lines ── -->
+                <g stroke="rgba(255,255,255,0.045)" stroke-width="1" stroke-dasharray="4 6">
+                  <line x1="450" y1="30"  x2="450" y2="230"/>
+                  <line x1="450" y1="290" x2="450" y2="490"/>
+                  <line x1="70"  y1="260" x2="395" y2="260"/>
+                  <line x1="505" y1="260" x2="830" y2="260"/>
+                  <line x1="175" y1="75"  x2="400" y2="215"/>
+                  <line x1="500" y1="305" x2="725" y2="445"/>
+                  <line x1="725" y1="75"  x2="500" y2="215"/>
+                  <line x1="400" y1="305" x2="175" y2="445"/>
+                </g>
+
+                <!-- ── Haul roads ── -->
+                <path d="M 30 490 Q 180 420 350 370 Q 520 320 680 360 Q 800 390 870 360"
+                  stroke="rgba(255,255,255,0.08)" stroke-width="4" fill="none" stroke-dasharray="10 5"/>
+                <path d="M 100 40  Q 230 110 360 145 Q 510 180 660 140 Q 760 110 850 120"
+                  stroke="rgba(255,255,255,0.06)" stroke-width="3" fill="none" stroke-dasharray="7 5"/>
+                <!-- Access ramp -->
+                <path d="M 560 30 Q 560 120 510 190 Q 470 245 450 260"
+                  stroke="rgba(255,255,255,0.05)" stroke-width="2.5" fill="none"/>
+
+                <!-- ── Depth elevation labels ── -->
+                <text x="26" y="20" fill="rgba(122,128,153,0.35)" font-size="9" font-family="DM Sans">EL +0m</text>
+                <text x="26" y="68" fill="rgba(122,128,153,0.3)"  font-size="9" font-family="DM Sans">EL -25m</text>
+                <text x="26" y="155" fill="rgba(122,128,153,0.25)" font-size="9" font-family="DM Sans">EL -50m</text>
+                <text x="26" y="245" fill="rgba(122,128,153,0.2)"  font-size="9" font-family="DM Sans">EL -75m</text>
+
+                <!-- ── Compass rose ── -->
+                <g transform="translate(855,30)">
+                  <circle r="14" fill="var(--bg3)" stroke="rgba(255,255,255,0.08)"/>
+                  <text x="0" y="-4"  text-anchor="middle" fill="rgba(240,244,255,0.5)" font-size="8" font-family="DM Sans">N</text>
+                  <text x="0" y="10"  text-anchor="middle" fill="rgba(122,128,153,0.4)" font-size="7" font-family="DM Sans">S</text>
+                  <text x="-10" y="3" text-anchor="middle" fill="rgba(122,128,153,0.4)" font-size="7" font-family="DM Sans">W</text>
+                  <text x="10"  y="3" text-anchor="middle" fill="rgba(122,128,153,0.4)" font-size="7" font-family="DM Sans">E</text>
+                  <line x1="0" y1="-8" x2="0" y2="-12" stroke="rgba(240,244,255,0.6)" stroke-width="1.5"/>
+                </g>
+
+                <!-- ── STATIC preset markers ── -->
+
+                <!-- Safe — North Pit Alpha -->
+                <g class="mine-marker" filter="url(#glow)"
+                   onclick="selectSite('North Pit Alpha','safe','45.2°N','-73.8°W','85','12','Normal','Bench 3, North sector')"
+                   onmouseenter="showTip(event,'North Pit Alpha','safe')"
+                   onmouseleave="hideTip()">
+                  <circle cx="270" cy="138" r="18" fill="rgba(34,197,94,0.12)" stroke="#22c55e" stroke-width="1.5"/>
+                  <circle cx="270" cy="138" r="7"  fill="#22c55e"/>
+                  <text x="270" y="121" text-anchor="middle" fill="#22c55e" font-size="10.5" font-family="DM Sans" font-weight="600">N-Alpha</text>
+                </g>
+
+                <!-- Safe — West Bench B2 -->
+                <g class="mine-marker" filter="url(#glow)"
+                   onclick="selectSite('West Bench B2','safe','45.1°N','-74.0°W','78','8','Normal','Bench 2, West sector')"
+                   onmouseenter="showTip(event,'West Bench B2','safe')"
+                   onmouseleave="hideTip()">
+                  <circle cx="148" cy="275" r="18" fill="rgba(34,197,94,0.12)" stroke="#22c55e" stroke-width="1.5"/>
+                  <circle cx="148" cy="275" r="7"  fill="#22c55e"/>
+                  <text x="148" y="258" text-anchor="middle" fill="#22c55e" font-size="10.5" font-family="DM Sans" font-weight="600">W-B2</text>
+                </g>
+
+                <!-- Safe — South Rim S1 -->
+                <g class="mine-marker" filter="url(#glow)"
+                   onclick="selectSite('South Rim S1','safe','44.9°N','-73.7°W','91','15','Normal','Bench 1, South sector')"
+                   onmouseenter="showTip(event,'South Rim S1','safe')"
+                   onmouseleave="hideTip()">
+                  <circle cx="450" cy="418" r="18" fill="rgba(34,197,94,0.12)" stroke="#22c55e" stroke-width="1.5"/>
+                  <circle cx="450" cy="418" r="7"  fill="#22c55e"/>
+                  <text x="450" y="401" text-anchor="middle" fill="#22c55e" font-size="10.5" font-family="DM Sans" font-weight="600">S-Rim</text>
+                </g>
+
+                <!-- Caution — East Corridor C3 -->
+                <g class="mine-marker" filter="url(#glow)"
+                   onclick="selectSite('East Corridor C3','caution','45.3°N','-73.6°W','58','22','Elevated','Bench 4, East sector')"
+                   onmouseenter="showTip(event,'East Corridor C3','caution')"
+                   onmouseleave="hideTip()">
+                  <circle cx="682" cy="175" r="19" fill="rgba(249,115,22,0.15)" stroke="#f97316" stroke-width="2"/>
+                  <circle cx="682" cy="175" r="8"  fill="#f97316"/>
+                  <text x="682" y="157" text-anchor="middle" fill="#f97316" font-size="10.5" font-family="DM Sans" font-weight="600">E-C3</text>
+                </g>
+
+                <!-- Caution — Central Zone -->
+                <g class="mine-marker" filter="url(#glow)"
+                   onclick="selectSite('Central Zone CZ','caution','45.2°N','-73.9°W','62','19','Elevated','Pit center, Bench 5')"
+                   onmouseenter="showTip(event,'Central Zone CZ','caution')"
+                   onmouseleave="hideTip()">
+                  <circle cx="450" cy="260" r="19" fill="rgba(249,115,22,0.15)" stroke="#f97316" stroke-width="2"/>
+                  <circle cx="450" cy="260" r="8"  fill="#f97316"/>
+                  <text x="450" y="241" text-anchor="middle" fill="#f97316" font-size="10.5" font-family="DM Sans" font-weight="600">C-Zone</text>
+                </g>
+
+                <!-- Critical — Eastern Haul Road -->
+                <g class="mine-marker" filter="url(#glowStrong)"
+                   onclick="selectSite('Eastern Haul Road','critical','45.4°N','-73.5°W','23','41','CRITICAL','Haul road junction, East')"
+                   onmouseenter="showTip(event,'Eastern Haul Road ⚠','critical')"
+                   onmouseleave="hideTip()">
+                  <!-- Pulsing rings -->
+                  <circle cx="762" cy="330" r="30" fill="rgba(239,68,68,0.06)" stroke="rgba(239,68,68,0.2)" stroke-width="1">
+                    <animate attributeName="r" values="22;34;22" dur="2s" repeatCount="indefinite"/>
+                    <animate attributeName="opacity" values="0.6;0;0.6" dur="2s" repeatCount="indefinite"/>
+                  </circle>
+                  <circle cx="762" cy="330" r="21" fill="rgba(239,68,68,0.18)" stroke="#ef4444" stroke-width="2.5"/>
+                  <circle cx="762" cy="330" r="9"  fill="#ef4444"/>
+                  <text x="762" y="310" text-anchor="middle" fill="#ef4444" font-size="10.5" font-family="DM Sans" font-weight="700">E-Haul ⚠</text>
+                </g>
+
+                <!-- ── Dynamic prediction markers from DB ── -->
+                <g id="dyn-markers"></g>
+
+                <!-- Scale bar -->
+                <g transform="translate(30,498)">
+                  <line x1="0" y1="0" x2="60" y2="0" stroke="rgba(122,128,153,0.4)" stroke-width="1.5"/>
+                  <line x1="0" y1="-3" x2="0" y2="3" stroke="rgba(122,128,153,0.4)" stroke-width="1.5"/>
+                  <line x1="60" y1="-3" x2="60" y2="3" stroke="rgba(122,128,153,0.4)" stroke-width="1.5"/>
+                  <text x="30" y="-6" text-anchor="middle" fill="rgba(122,128,153,0.45)" font-size="8.5" font-family="DM Sans">500m</text>
+                </g>
+              </svg>
             </div>
+          </div>
+
+          <!-- ── Side Panel ── -->
+          <div class="map-side">
+
+            <!-- Selected site -->
+            <div class="side-card">
+              <div class="side-card-head">
+                Site Analysis
+                <span style="font-size:10px;color:var(--muted);font-weight:400">Click a marker</span>
+              </div>
+              <div class="side-card-body">
+                <div id="selected-none">
+                  <span>ℹ</span>
+                  No site selected
+                </div>
+                <div id="selected-detail">
+                  <div class="sd-name" id="sd-name"></div>
+                  <div class="sd-badge" id="sd-badge"></div>
+                  <div class="sd-row"><span class="sd-lbl">Coordinates</span><span class="sd-val" id="sd-coords" style="font-family:monospace;font-size:11px"></span></div>
+                  <div class="sd-row"><span class="sd-lbl">Safe Score</span><span class="sd-val" id="sd-safe"></span></div>
+                  <div class="sd-row"><span class="sd-lbl">Risk Index</span><span class="sd-val" id="sd-risk"></span></div>
+                  <div class="sd-row"><span class="sd-lbl">Stability</span><span class="sd-val" id="sd-stab"></span></div>
+                  <div class="sd-row"><span class="sd-lbl">Location</span><span class="sd-val" id="sd-loc" style="font-size:11px"></span></div>
+                  <div class="sd-row"><span class="sd-lbl">Last Updated</span><span class="sd-val">2 min ago</span></div>
+                  <div class="sd-row" style="border:none"><span class="sd-lbl">Sensors</span><span class="sd-val">8 Active</span></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Risk summary -->
+            <div class="side-card">
+              <div class="side-card-head">Risk Summary</div>
+              <div class="side-card-body">
+                <div class="risk-summary">
+                  <div class="rs-cell safe">
+                    <div class="rs-val safe"  id="cnt-safe">0</div>
+                    <div class="rs-lbl">Safe</div>
+                  </div>
+                  <div class="rs-cell caution">
+                    <div class="rs-val caution" id="cnt-caution">0</div>
+                    <div class="rs-lbl">Caution</div>
+                  </div>
+                  <div class="rs-cell critical">
+                    <div class="rs-val critical" id="cnt-critical">0</div>
+                    <div class="rs-lbl">Critical</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Your predictions list -->
+            <div class="side-card" style="flex:1;min-height:0;display:flex;flex-direction:column">
+              <div class="side-card-head">
+                Your Predictions
+                <span style="font-size:10px;color:var(--muted);font-weight:400" id="pred-list-count"></span>
+              </div>
+              <div class="side-card-body" style="flex:1;overflow-y:auto;padding-top:8px">
+                <div id="pred-list-empty" style="color:var(--muted);font-size:12px;text-align:center;padding:20px 0">
+                  No predictions yet.<br>
+                  <a href="{{ url_for('upload_page') }}" style="color:var(--accent);font-size:12px">Upload data →</a>
+                </div>
+                <div id="pred-list"></div>
+              </div>
+            </div>
+
           </div>
         </div>
       </div>
+
     </main>
   </div>
 </div>
@@ -116,14 +428,175 @@
 <script>
 const predData = {{ predictions|safe }};
 
-function selectMapSite(name, risk, lat, lng, safe) {
-  document.getElementById('siteInfoPanel').style.display='';
-  document.getElementById('siName').textContent = name;
-  const b = document.getElementById('siBadge');
-  b.textContent = risk.charAt(0).toUpperCase()+risk.slice(1);
-  b.className = 'risk-badge ' + risk;
-  document.getElementById('siCoords').textContent = lat+'°N '+lng+'°W';
-  document.getElementById('siSafe').textContent   = safe+'%';
+/* ═══════════════════════════════════════
+   SITE SELECTION
+═══════════════════════════════════════ */
+function selectSite(name, risk, coords, coords2, safeScore, riskIdx, stability, location) {
+  document.getElementById('selected-none').style.display   = 'none';
+  document.getElementById('selected-detail').style.display = 'block';
+
+  document.getElementById('sd-name').textContent   = name;
+  document.getElementById('sd-coords').textContent = coords + ' ' + coords2;
+  document.getElementById('sd-safe').textContent   = safeScore + '%';
+  document.getElementById('sd-risk').textContent   = riskIdx;
+  document.getElementById('sd-stab').textContent   = stability;
+  document.getElementById('sd-loc').textContent    = location;
+
+  const badge = document.getElementById('sd-badge');
+  badge.textContent = risk.charAt(0).toUpperCase() + risk.slice(1);
+  badge.className   = 'sd-badge ' + risk;
+}
+
+/* ═══════════════════════════════════════
+   TOOLTIP
+═══════════════════════════════════════ */
+const tooltip = document.getElementById('map-tooltip');
+const riskLabels = { safe:'🟢 Safe', caution:'🟡 Caution', critical:'🔴 Critical' };
+const riskColors = { safe:'var(--green)', caution:'var(--orange)', critical:'var(--red)' };
+
+function showTip(e, name, risk) {
+  tooltip.style.display = 'block';
+  document.getElementById('tt-title').textContent = name;
+  document.getElementById('tt-risk').textContent  = riskLabels[risk] || risk;
+  document.getElementById('tt-risk').style.color  = riskColors[risk] || 'var(--muted)';
+  moveTip(e);
+}
+function hideTip() { tooltip.style.display = 'none'; }
+function moveTip(e) {
+  const area = document.getElementById('svgArea').getBoundingClientRect();
+  let x = e.clientX - area.left + 14;
+  let y = e.clientY - area.top  - 10;
+  if (x + 160 > area.width)  x -= 170;
+  if (y + 60  > area.height) y -= 70;
+  tooltip.style.left = x + 'px';
+  tooltip.style.top  = y + 'px';
+}
+document.getElementById('svgArea').addEventListener('mousemove', e => {
+  if (tooltip.style.display === 'block') moveTip(e);
+});
+
+/* ═══════════════════════════════════════
+   DYNAMIC PREDICTION MARKERS FROM DB
+═══════════════════════════════════════ */
+// Place prediction markers around the pit terraces
+// Map them to positions based on index
+const pitPositions = [
+  [310,185],[390,155],[480,150],[560,165],[630,210],[680,260],
+  [670,315],[620,360],[555,395],[480,415],[400,415],[325,400],
+  [265,360],[215,310],[190,255],[200,200],[240,170],[285,155],
+  [720,240],[740,290],[700,360],[650,400],[580,430],[500,440],
+  [420,440],[340,435],[270,415],[210,380],[170,335],[155,280],
+];
+
+const dynGroup  = document.getElementById('dyn-markers');
+const markerCol = { safe:'#22c55e', caution:'#f97316', critical:'#ef4444' };
+const markerBg  = { safe:'rgba(34,197,94,0.14)', caution:'rgba(249,115,22,0.16)', critical:'rgba(239,68,68,0.2)' };
+
+let safeCnt=3, cautionCnt=2, criticalCnt=1; // static markers already counted
+
+predData.slice(0, 25).forEach((p, i) => {
+  const pos = pitPositions[i % pitPositions.length];
+  if (!pos) return;
+  const [cx, cy] = pos;
+  const risk     = p.risk_label || 'safe';
+  const siteId   = p.site_id   || ('SITE-' + String(i+1).padStart(3,'0'));
+  const score    = p.risk_score ? p.risk_score.toFixed(1) + '%' : '—';
+  const stroke   = markerCol[risk]  || markerCol.safe;
+  const fill     = markerBg[risk]   || markerBg.safe;
+
+  // Count
+  if (risk === 'safe')     safeCnt++;
+  else if (risk === 'caution') cautionCnt++;
+  else if (risk === 'critical') criticalCnt++;
+
+  const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+  g.setAttribute('class','mine-marker');
+  g.setAttribute('filter','url(#glow)');
+  g.style.cursor = 'pointer';
+
+  g.innerHTML = `
+    <circle cx="${cx}" cy="${cy}" r="12" fill="${fill}" stroke="${stroke}" stroke-width="1.5" opacity="0.85"/>
+    <circle cx="${cx}" cy="${cy}" r="5" fill="${stroke}"/>
+    <text x="${cx}" y="${cy-15}" text-anchor="middle"
+          fill="${stroke}" font-size="9.5" font-family="DM Sans" font-weight="600"
+          opacity="0.9">${siteId.replace('SITE-','S-')}</text>
+  `;
+
+  g.addEventListener('click', () => {
+    selectSite(
+      siteId, risk,
+      p.slope_angle ? p.slope_angle.toFixed(1) + '° slope' : 'N/A',
+      p.rainfall    ? p.rainfall.toFixed(0) + ' mm rain'   : '',
+      score.replace('%',''),
+      p.risk_score ? Math.round(p.risk_score) : '—',
+      risk.charAt(0).toUpperCase() + risk.slice(1),
+      'Prediction data'
+    );
+  });
+  g.addEventListener('mouseenter', e => showTip(e, siteId, risk));
+  g.addEventListener('mouseleave', hideTip);
+
+  dynGroup.appendChild(g);
+});
+
+// Update counts
+document.getElementById('cnt-safe').textContent     = safeCnt;
+document.getElementById('cnt-caution').textContent  = cautionCnt;
+document.getElementById('cnt-critical').textContent = criticalCnt;
+document.getElementById('marker-count').textContent =
+  (safeCnt + cautionCnt + criticalCnt) + ' sectors mapped';
+
+/* ═══════════════════════════════════════
+   PREDICTION LIST (side panel)
+═══════════════════════════════════════ */
+const predList = document.getElementById('pred-list');
+if (predData.length > 0) {
+  document.getElementById('pred-list-empty').style.display = 'none';
+  document.getElementById('pred-list-count').textContent = predData.length + ' sites';
+
+  predData.slice(0,20).forEach((p, i) => {
+    const risk  = p.risk_label || 'safe';
+    const color = markerCol[risk];
+    const siteId = p.site_id || ('SITE-' + String(i+1).padStart(3,'0'));
+    const score = p.risk_score ? p.risk_score.toFixed(1) + '%' : '—';
+
+    const div = document.createElement('div');
+    div.className = 'site-list-item';
+    div.innerHTML = `
+      <div class="sli-dot" style="background:${color};box-shadow:0 0 5px ${color}"></div>
+      <span class="sli-name">${siteId}</span>
+      <span class="sli-score">${score}</span>
+    `;
+    div.addEventListener('click', () => {
+      selectSite(siteId, risk,
+        p.slope_angle ? p.slope_angle.toFixed(1)+'° slope' : 'N/A',
+        p.rainfall    ? p.rainfall.toFixed(0)+' mm'        : '',
+        p.risk_score  ? p.risk_score.toFixed(0)            : '—',
+        Math.round(p.risk_score || 0),
+        risk.charAt(0).toUpperCase()+risk.slice(1),
+        'From your CSV upload'
+      );
+    });
+    predList.appendChild(div);
+  });
+}
+
+/* ═══════════════════════════════════════
+   ZOOM / RESET
+═══════════════════════════════════════ */
+let currentScale = 1;
+const svgEl      = document.getElementById('mine-svg');
+
+function zoomMap(factor) {
+  currentScale = Math.max(0.5, Math.min(3, currentScale * factor));
+  const cx = 450, cy = 260;
+  svgEl.setAttribute('viewBox',
+    `${cx - 450/currentScale} ${cy - 260/currentScale} ${900/currentScale} ${520/currentScale}`
+  );
+}
+function resetView() {
+  currentScale = 1;
+  svgEl.setAttribute('viewBox','0 0 900 520');
 }
 </script>
 {% endblock %}
