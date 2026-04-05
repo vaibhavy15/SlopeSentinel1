@@ -4,70 +4,60 @@
 <div id="dashboard">
   <div class="dash-layout">
     {% set active='upload' %}{% include '_sidebar.html' %}
-
     <main class="main-panel">
       <div class="page-header">
-        <div class="page-title">
-          <h2>Upload &amp; Predict</h2>
-          <p>Upload a CSV dataset or enter values manually for AI risk prediction.</p>
-        </div>
+        <div class="page-title"><h2>Upload &amp; Predict</h2><p>CSV batch upload or manual single-site prediction.</p></div>
       </div>
-
       <div style="padding:0 32px 32px">
-
-        {% with msgs = get_flashed_messages(with_categories=true) %}
-          {% for cat,msg in msgs %}
-            <div class="flash flash-{{ cat }}" style="margin-bottom:16px"><span class="flash-icon">{% if cat=='success' %}✓{% else %}⚠{% endif %}</span> {{ msg }}</div>
-          {% endfor %}
-        {% endwith %}
-        {% if error %}
-          <div class="flash flash-danger" style="margin-bottom:16px"><span class="flash-icon">⚠</span> {{ error }}</div>
-        {% endif %}
+        {% with msgs=get_flashed_messages(with_categories=true) %}{% for c,m in msgs %}
+          <div class="flash flash-{{ c }}" style="margin-bottom:12px"><span class="flash-icon">{% if c=='success' %}✓{% else %}⚠{% endif %}</span> {{ m }}</div>
+        {% endfor %}{% endwith %}
+        {% if error %}<div class="flash flash-danger" style="margin-bottom:12px"><span class="flash-icon">⚠</span> {{ error }}</div>{% endif %}
 
         <!-- Tabs -->
-        <div class="admin-tabs-wrap" style="padding:0;margin-bottom:24px">
+        <div class="admin-tabs-wrap" style="padding:0;margin-bottom:22px">
           <div class="admin-tabs">
             <button class="admin-tab active" onclick="showTab('csv',this)">📁 CSV Upload</button>
-            <button class="admin-tab"        onclick="showTab('manual',this)">✏️ Manual Input</button>
+            <button class="admin-tab" onclick="showTab('manual',this)">✏️ Manual Input</button>
           </div>
         </div>
 
-        <!-- ── CSV upload ── -->
+        <!-- CSV tab -->
         <div id="tab-csv">
           <form method="POST" enctype="multipart/form-data">
-            <div class="upload-zone" id="uploadZone"
-                 onclick="document.getElementById('fileInput').click()"
+            <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()"
                  ondragover="dragOver(event)" ondragleave="dragLeave()" ondrop="dropFile(event)">
               <div class="upload-icon">⬆</div>
               <h3>Drop your CSV file here</h3>
               <p>Required columns: slope_angle, rainfall, rock_density, crack_length, groundwater_level, blasting_intensity, seismic_activity, bench_height, excavation_depth, temperature_variation</p>
-              <button type="button" class="btn-select"
-                      onclick="event.stopPropagation();document.getElementById('fileInput').click()">Select File</button>
-              <input type="file" id="fileInput" name="file" accept=".csv" style="display:none"
-                     onchange="showFileName(this)" />
+              <button type="button" class="btn-select" onclick="event.stopPropagation();document.getElementById('fileInput').click()">Select File</button>
+              <input type="file" id="fileInput" name="file" accept=".csv" style="display:none" onchange="showFileName(this)"/>
             </div>
             <div id="fileNameDisplay" style="display:none;margin-bottom:12px;font-size:13px;color:var(--muted)"></div>
-            <button type="submit" class="btn-new" style="margin-top:4px">🚀 Run AI Prediction</button>
+            <button type="submit" class="btn-new">🚀 Run AI Prediction</button>
           </form>
 
-          <!-- Results -->
           {% if results %}
-          <div style="margin-top:28px">
-            <h3 style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700;margin-bottom:12px">
-              Prediction Results — {{ results|length }} sites analysed
-            </h3>
-            <!-- Summary chips -->
-            <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
-              {% set safe_cnt = results|selectattr('label','equalto','safe')|list|length %}
-              {% set caut_cnt = results|selectattr('label','equalto','caution')|list|length %}
-              {% set crit_cnt = results|selectattr('label','equalto','critical')|list|length %}
+          <div style="margin-top:26px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+              <h3 style="font-family:'Syne',sans-serif;font-size:17px;font-weight:700">Prediction Results — {{ results|length }} sites</h3>
+              <div style="display:flex;gap:8px">
+                <a href="{{ url_for('export') }}" class="btn-secondary" style="font-size:12px">⬇ Export CSV</a>
+                <a href="{{ url_for('generate_bulk_report') }}" class="btn-secondary" style="font-size:12px">📄 Bulk PDF</a>
+              </div>
+            </div>
+            <!-- Summary -->
+            {% set safe_cnt = results|selectattr('label','equalto','safe')|list|length %}
+            {% set caut_cnt = results|selectattr('label','equalto','caution')|list|length %}
+            {% set crit_cnt = results|selectattr('label','equalto','critical')|list|length %}
+            <div style="display:flex;gap:10px;margin-bottom:14px">
               <span class="risk-pill safe" style="padding:6px 14px;font-size:13px">✓ Safe: {{ safe_cnt }}</span>
               <span class="risk-pill caution" style="padding:6px 14px;font-size:13px">⚠ Caution: {{ caut_cnt }}</span>
               <span class="risk-pill critical" style="padding:6px 14px;font-size:13px">🚨 Critical: {{ crit_cnt }}</span>
             </div>
             <div class="table-wrap">
               <table>
-                <thead><tr><th>Site ID</th><th>Slope°</th><th>Rainfall</th><th>Risk Score</th><th>Prediction</th></tr></thead>
+                <thead><tr><th>Site ID</th><th>Slope°</th><th>Rainfall</th><th>Score</th><th>Top Factor</th><th>AI Reason</th><th>Risk</th><th>Report</th></tr></thead>
                 <tbody>
                   {% for r in results %}
                   <tr>
@@ -76,50 +66,42 @@
                     <td>{{ r.rainfall }} mm</td>
                     <td>
                       <div style="display:flex;align-items:center;gap:8px">
-                        <div style="flex:1;height:4px;background:var(--bg3);border-radius:2px;overflow:hidden">
+                        <div style="flex:1;height:4px;background:var(--bg3);border-radius:2px;overflow:hidden;min-width:40px">
                           <div style="height:100%;width:{{ r.score }}%;background:{% if r.label=='safe' %}#22c55e{% elif r.label=='caution' %}#f97316{% else %}#ef4444{% endif %}"></div>
                         </div>
                         <span style="font-size:12px;color:var(--muted)">{{ r.score }}%</span>
                       </div>
                     </td>
+                    <td style="font-size:11px;color:var(--muted)">{{ r.top_feature }}</td>
+                    <td style="font-size:11px;color:var(--muted);max-width:180px">{{ r.reason[:60] }}{% if r.reason|length > 60 %}…{% endif %}</td>
                     <td><span class="risk-pill {{ r.label }}">{{ r.name }}</span></td>
+                    <td><a href="{{ url_for('generate_report', pred_id=r.pred_id) }}" class="btn-secondary" style="padding:3px 9px;font-size:11px">📄 PDF</a></td>
                   </tr>
                   {% endfor %}
                 </tbody>
               </table>
             </div>
-            <div style="margin-top:12px">
-              <a href="{{ url_for('export') }}" class="btn-secondary" style="display:inline-flex">⬇ Export All Results</a>
-            </div>
           </div>
           {% endif %}
         </div>
 
-        <!-- ── Manual input ── -->
+        <!-- Manual input tab -->
         <div id="tab-manual" style="display:none">
           <div class="chart-card">
             <h3 style="margin-bottom:4px">Single Site Prediction</h3>
-            <p class="chart-sub" style="margin-bottom:20px">Enter geotechnical parameters for one site</p>
-            <div id="manualResult" style="display:none;margin-bottom:20px"></div>
+            <p class="chart-sub" style="margin-bottom:18px">Enter geotechnical parameters for real-time AI prediction</p>
+            <div id="manualResult" style="display:none;margin-bottom:18px"></div>
             <form id="manualForm" onsubmit="submitManual(event)">
-              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
-                {% set fields = [
-                  ('slope_angle','Slope Angle (°)','0–90'),
-                  ('rainfall','Rainfall (mm)','0–500'),
-                  ('rock_density','Rock Density','1500–3000'),
-                  ('crack_length','Crack Length (m)','0–100'),
-                  ('groundwater_level','Groundwater Level','0 or 1'),
-                  ('blasting_intensity','Blasting Intensity','0–10'),
-                  ('seismic_activity','Seismic Activity','0–10'),
-                  ('bench_height','Bench Height (m)','0–50'),
-                  ('excavation_depth','Excavation Depth (m)','0–200'),
-                  ('temperature_variation','Temp Variation (°C)','0–30')
-                ] %}
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+                {% set fields = [('slope_angle','Slope Angle (°)','0–90'),('rainfall','Rainfall (mm)','0–500'),
+                  ('rock_density','Rock Density','1500–3000'),('crack_length','Crack Length (m)','0–100'),
+                  ('groundwater_level','Groundwater Level','0 or 1'),('blasting_intensity','Blasting Intensity','0–10'),
+                  ('seismic_activity','Seismic Activity','0–10'),('bench_height','Bench Height (m)','0–50'),
+                  ('excavation_depth','Excavation Depth (m)','0–200'),('temperature_variation','Temp Variation (°C)','0–30')] %}
                 {% for name,label,hint in fields %}
                 <div class="field">
-                  <label style="font-size:12px;font-weight:500;display:block;margin-bottom:6px">{{ label }}</label>
-                  <input type="number" name="{{ name }}" step="0.01" placeholder="{{ hint }}"
-                         class="modal-input" required />
+                  <label style="font-size:12px;font-weight:500;display:block;margin-bottom:5px">{{ label }}</label>
+                  <input type="number" name="{{ name }}" step="0.01" placeholder="{{ hint }}" class="modal-input" required/>
                 </div>
                 {% endfor %}
               </div>
@@ -128,62 +110,44 @@
           </div>
         </div>
 
-        <!-- Feature info cards -->
-        <div class="upload-features" style="margin-top:24px">
-          <div class="upload-feat">
-            <div class="uf-icon purple">✓</div>
-            <div><h4>Logistic Regression Model</h4><p>Best-performing model (94.7% accuracy) trained on 5,000 rockfall samples with 10 geotechnical features.</p></div>
-          </div>
-          <div class="upload-feat">
-            <div class="uf-icon cyan">!</div>
-            <div><h4>3 Risk Classes</h4><p>Each prediction outputs: 🟢 Low Risk, 🟡 Moderate Risk, 🔴 High Risk — with confidence scores.</p></div>
-          </div>
+        <!-- Info cards -->
+        <div class="upload-features" style="margin-top:20px">
+          <div class="upload-feat"><div class="uf-icon purple">✓</div><div><h4>Logistic Regression Model</h4><p>94.7% accuracy on 5,000 rockfall samples. Outputs probability for all 3 risk classes.</p></div></div>
+          <div class="upload-feat"><div class="uf-icon cyan">🔍</div><div><h4>Explainable AI</h4><p>Each prediction includes top contributing factor, risk reasons, and full feature importance. <a href="{{ url_for('xai') }}" style="color:var(--accent2)">View XAI →</a></p></div></div>
+          <div class="upload-feat"><div class="uf-icon purple">📄</div><div><h4>PDF Reports</h4><p>Auto-generated professional PDF for each prediction including parameters, factors, and recommendations.</p></div></div>
+          <div class="upload-feat"><div class="uf-icon cyan">🎛</div><div><h4>Simulation Mode</h4><p>Want to test scenarios? <a href="{{ url_for('simulate') }}" style="color:var(--accent2)">Try Simulation Mode →</a> to adjust sliders in real-time.</p></div></div>
         </div>
       </div>
     </main>
   </div>
 </div>
-
 <script>
-function showTab(name, btn) {
-  document.querySelectorAll('.admin-tab').forEach(t=>t.classList.remove('active'));
-  btn.classList.add('active');
-  document.getElementById('tab-csv').style.display    = name==='csv'    ? '' : 'none';
-  document.getElementById('tab-manual').style.display = name==='manual' ? '' : 'none';
-}
-function showFileName(input) {
-  const d = document.getElementById('fileNameDisplay');
-  d.style.display = ''; d.textContent = '📁 ' + input.files[0].name;
-}
-function dragOver(e) { e.preventDefault(); document.getElementById('uploadZone').classList.add('drag'); }
-function dragLeave()  { document.getElementById('uploadZone').classList.remove('drag'); }
-function dropFile(e)  { e.preventDefault(); dragLeave(); const f=e.dataTransfer.files[0]; if(f){const dt=new DataTransfer();dt.items.add(f);document.getElementById('fileInput').files=dt.files;showFileName(document.getElementById('fileInput'));} }
-
-async function submitManual(e) {
+function showTab(n,btn){document.querySelectorAll('.admin-tab').forEach(t=>t.classList.remove('active'));btn.classList.add('active');document.getElementById('tab-csv').style.display=n==='csv'?'':'none';document.getElementById('tab-manual').style.display=n==='manual'?'':'none';}
+function showFileName(i){const d=document.getElementById('fileNameDisplay');d.style.display='';d.textContent='📁 '+i.files[0].name;}
+function dragOver(e){e.preventDefault();document.getElementById('uploadZone').classList.add('drag');}
+function dragLeave(){document.getElementById('uploadZone').classList.remove('drag');}
+function dropFile(e){e.preventDefault();dragLeave();const f=e.dataTransfer.files[0];if(f){const dt=new DataTransfer();dt.items.add(f);document.getElementById('fileInput').files=dt.files;showFileName(document.getElementById('fileInput'));}}
+async function submitManual(e){
   e.preventDefault();
-  const form = e.target;
-  const btn  = form.querySelector('button[type=submit]');
-  btn.textContent='⏳ Predicting…'; btn.disabled=true;
-  const fd = new FormData(form);
-  const res  = await fetch('/api/predict', {method:'POST',body:fd});
-  const data = await res.json();
-  btn.textContent='🧠 Predict Risk'; btn.disabled=false;
-  if(data.error){alert(data.error);return;}
-  const colours = {safe:'#22c55e',caution:'#f97316',critical:'#ef4444'};
-  const icons   = {safe:'🟢',caution:'🟡',critical:'🔴'};
-  const col = colours[data.risk_label] || '#7c6fff';
-  const ic  = icons[data.risk_label]   || '•';
-  document.getElementById('manualResult').style.display='';
-  document.getElementById('manualResult').innerHTML = `
-    <div style="background:var(--bg3);border:1px solid ${col}40;border-radius:12px;padding:20px;border-left:4px solid ${col}">
-      <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;margin-bottom:6px">${ic} ${data.risk_name}</div>
-      <div style="color:var(--muted);font-size:13px">Confidence Score: <strong style="color:${col}">${data.score}%</strong></div>
-      <div style="display:flex;gap:16px;margin-top:12px;font-size:12px">
-        <span>🟢 Safe: <strong>${data.proba.safe}%</strong></span>
-        <span>🟡 Caution: <strong>${data.proba.caution}%</strong></span>
-        <span>🔴 Critical: <strong>${data.proba.critical}%</strong></span>
-      </div>
-    </div>`;
+  const btn=e.target.querySelector('button[type=submit]');
+  btn.textContent='⏳ Predicting…';btn.disabled=true;
+  const fd=new FormData(e.target);
+  const res=await fetch('/api/predict',{method:'POST',body:fd});
+  const d=await res.json();
+  btn.textContent='🧠 Predict Risk';btn.disabled=false;
+  if(d.error){alert(d.error);return;}
+  const cols={safe:'#22c55e',caution:'#f97316',critical:'#ef4444'};
+  const icons={safe:'🟢',caution:'🟡',critical:'🔴'};
+  const col=cols[d.risk_label]||'#7c6fff';
+  const div=document.getElementById('manualResult');div.style.display='';
+  div.innerHTML=`<div style="background:var(--bg3);border:1px solid ${col}40;border-radius:12px;padding:18px;border-left:4px solid ${col}">
+    <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;margin-bottom:8px">${icons[d.risk_label]} ${d.risk_name} — ${d.score}%</div>
+    <div style="display:flex;gap:14px;font-size:12px;margin-bottom:12px">
+      <span>🟢 Safe: ${d.proba.safe}%</span><span>🟡 Caution: ${d.proba.caution}%</span><span>🔴 Critical: ${d.proba.critical}%</span>
+    </div>
+    <div style="font-size:12px;color:var(--accent2);margin-bottom:6px">Top Factor: ${d.top_feature}</div>
+    ${d.reasons.map(r=>`<div style="font-size:12px;color:var(--muted);margin-bottom:4px">• ${r}</div>`).join('')}
+  </div>`;
 }
 </script>
 {% endblock %}

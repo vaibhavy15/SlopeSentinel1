@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% block title %}Simulation — SlopeSentinel{% endblock %}
+{% block body %}
+<div id="dashboard">
+  <div class="dash-layout">
+    {% set active='simulate' %}{% include '_sidebar.html' %}
+    <main class="main-panel">
+      <div class="page-header">
+        <div class="page-title">
+          <h2>Simulation Mode</h2>
+          <p>Adjust geotechnical parameters and see risk change in real-time.</p>
+        </div>
+      </div>
+
+      <div style="padding:0 32px 32px;display:grid;grid-template-columns:1fr 360px;gap:20px;align-items:start">
+
+        <!-- ── Sliders ── -->
+        <div class="chart-card">
+          <h3 style="margin-bottom:4px">Parameter Controls</h3>
+          <p class="chart-sub" style="margin-bottom:22px">Drag sliders to simulate different geotechnical conditions</p>
+
+          {% set sliders = [
+            ('slope_angle','Slope Angle','°',0,90,45,'var(--accent2)'),
+            ('rainfall','Rainfall','mm',0,400,80,'var(--blue,#0ea5e9)'),
+            ('rock_density','Rock Density','kg/m³',1500,3000,2300,'var(--muted)'),
+            ('crack_length','Crack Length','m',0,80,10,'var(--orange)'),
+            ('groundwater_level','Groundwater Level','(0/1)',0,1,0,'var(--accent)'),
+            ('blasting_intensity','Blasting Intensity','',0,10,3,'var(--red)'),
+            ('seismic_activity','Seismic Activity','g',0,8,1,'var(--orange)'),
+            ('bench_height','Bench Height','m',0,40,15,'var(--muted)'),
+            ('excavation_depth','Excavation Depth','m',0,180,60,'var(--accent2)'),
+            ('temperature_variation','Temperature Variation','°C',0,30,10,'var(--muted)')
+          ] %}
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+            {% for col,label,unit,mn,mx,default,color in sliders %}
+            <div class="sim-slider-wrap">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
+                <label style="font-size:12.5px;font-weight:500;color:var(--text)">{{ label }}</label>
+                <span style="font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:{{ color }}" id="val-{{ col }}">{{ default }}{{ unit }}</span>
+              </div>
+              <input type="range" id="sl-{{ col }}" min="{{ mn }}" max="{{ mx }}"
+                     value="{{ default }}" step="{{ '1' if col=='groundwater_level' else '0.1' }}"
+                     style="width:100%;accent-color:{{ color }};height:4px"
+                     oninput="updateSlider('{{ col }}','{{ unit }}',this.value)" />
+              <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:3px">
+                <span>{{ mn }}{{ unit }}</span><span>{{ mx }}{{ unit }}</span>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+
+          <div style="margin-top:24px;display:flex;gap:10px">
+            <button onclick="runSimulation()" class="btn-new" style="flex:1">🧠 Simulate Risk</button>
+            <button onclick="resetSliders()" class="btn-secondary">↺ Reset</button>
+            <button onclick="randomize()" class="btn-secondary">🎲 Randomize</button>
+          </div>
+        </div>
+
+        <!-- ── Result panel ── -->
+        <div style="display:flex;flex-direction:column;gap:16px">
+
+          <!-- Risk result -->
+          <div class="chart-card" id="sim-result-card">
+            <h3 style="margin-bottom:16px">Live Risk Result</h3>
+            <div id="sim-idle" style="text-align:center;padding:24px;color:var(--muted)">
+              <div style="font-size:36px;margin-bottom:8px">🎛</div>
+              <div style="font-size:13px">Adjust parameters and click<br><strong>Simulate Risk</strong></div>
+            </div>
+            <div id="sim-result" style="display:none">
+              <div id="sim-risk-badge" style="border-radius:12px;padding:18px;text-align:center;margin-bottom:16px">
+                <div id="sim-risk-icon" style="font-size:36px;margin-bottom:6px"></div>
+                <div id="sim-risk-name" style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800"></div>
+                <div id="sim-risk-score" style="font-size:14px;margin-top:4px;opacity:.85"></div>
+              </div>
+              <!-- Probability bars -->
+              <div style="margin-bottom:16px">
+                <div style="font-size:11px;color:var(--muted);margin-bottom:8px;letter-spacing:.06em">CLASS PROBABILITIES</div>
+                {% for lbl,color in [('safe','var(--green)'),('caution','var(--orange)'),('critical','var(--red)')] %}
+                <div style="margin-bottom:6px">
+                  <div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:3px">
+                    <span style="color:{{ color }}">{{ lbl.capitalize() }}</span>
+                    <span id="prob-{{ lbl }}" style="font-weight:600">—</span>
+                  </div>
+                  <div style="height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden">
+                    <div id="pbar-{{ lbl }}" style="height:100%;background:{{ color }};border-radius:2px;transition:width .6s ease;width:0%"></div>
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+
+          <!-- Top factors -->
+          <div class="chart-card" id="top-factors-card" style="display:none">
+            <h3 style="margin-bottom:14px">Top Risk Factors</h3>
+            <div id="top-factors-list"></div>
+          </div>
+
+          <!-- AI Reasons -->
+          <div class="chart-card" id="reasons-card" style="display:none">
+            <h3 style="margin-bottom:14px">Why This Risk Level?</h3>
+            <div id="reasons-list"></div>
+          </div>
+
+          <!-- Feature importance -->
+          <div class="chart-card">
+            <h3 style="margin-bottom:4px">Global Feature Importance</h3>
+            <p class="chart-sub" style="margin-bottom:14px">Model weight across all predictions</p>
+            <div id="fi-bars"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+const featureCols = {{ feature_cols|tojson }};
+const featureLabels = {{ feature_labels|tojson }};
+const featureImportance = {{ feature_importance|safe }};
+const defaults = {
+  slope_angle:45,rainfall:80,rock_density:2300,crack_length:10,
+  groundwater_level:0,blasting_intensity:3,seismic_activity:1,
+  bench_height:15,excavation_depth:60,temperature_variation:10
+};
+
+function updateSlider(col,unit,val){
+  document.getElementById('val-'+col).textContent = parseFloat(val).toFixed(col==='rock_density'?0:1) + unit;
+}
+function resetSliders(){
+  featureCols.forEach(col=>{
+    const sl=document.getElementById('sl-'+col);
+    sl.value=defaults[col]; sl.dispatchEvent(new Event('input'));
+  });
+  document.getElementById('sim-result').style.display='none';
+  document.getElementById('sim-idle').style.display='';
+  document.getElementById('top-factors-card').style.display='none';
+  document.getElementById('reasons-card').style.display='none';
+}
+function randomize(){
+  const ranges={slope_angle:[20,80],rainfall:[0,350],rock_density:[1600,2900],crack_length:[0,70],
+    groundwater_level:[0,1],blasting_intensity:[0,9],seismic_activity:[0,7],
+    bench_height:[5,35],excavation_depth:[10,160],temperature_variation:[0,28]};
+  featureCols.forEach(col=>{
+    const [mn,mx]=ranges[col];
+    const v=col==='groundwater_level'?Math.round(Math.random()):(Math.random()*(mx-mn)+mn);
+    const sl=document.getElementById('sl-'+col); sl.value=v; sl.dispatchEvent(new Event('input'));
+  });
+}
+async function runSimulation(){
+  const data={};
+  featureCols.forEach(col=>{ data[col]=parseFloat(document.getElementById('sl-'+col).value); });
+  const btn=document.querySelector('[onclick="runSimulation()"]');
+  btn.textContent='⏳ Running…'; btn.disabled=true;
+  const res=await fetch('/api/simulate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+  const d=await res.json();
+  btn.textContent='🧠 Simulate Risk'; btn.disabled=false;
+  if(d.error){alert(d.error);return;}
+  document.getElementById('sim-idle').style.display='none';
+  document.getElementById('sim-result').style.display='';
+  const colors={safe:'rgba(34,197,94,.15)',caution:'rgba(249,115,22,.15)',critical:'rgba(239,68,68,.18)'};
+  const textcols={safe:'var(--green)',caution:'var(--orange)',critical:'var(--red)'};
+  const icons={safe:'🟢',caution:'🟡',critical:'🔴'};
+  const badge=document.getElementById('sim-risk-badge');
+  badge.style.background=colors[d.risk_label]; badge.style.border='1px solid '+textcols[d.risk_label]+'55';
+  document.getElementById('sim-risk-icon').textContent=icons[d.risk_label];
+  document.getElementById('sim-risk-name').textContent=d.risk_name;
+  document.getElementById('sim-risk-name').style.color=textcols[d.risk_label];
+  document.getElementById('sim-risk-score').textContent='Confidence: '+d.score+'%';
+  ['safe','caution','critical'].forEach(lbl=>{
+    const v=d.proba[lbl]; document.getElementById('prob-'+lbl).textContent=v+'%';
+    document.getElementById('pbar-'+lbl).style.width=v+'%';
+  });
+  // Top factors
+  document.getElementById('top-factors-card').style.display='';
+  const tfl=document.getElementById('top-factors-list'); tfl.innerHTML='';
+  d.explanation.slice(0,5).forEach(e=>{
+    tfl.innerHTML+=`<div style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+        <span style="color:var(--text)">${e.label}</span>
+        <span style="color:var(--accent2);font-weight:600">${e.importance}%</span>
+      </div>
+      <div style="height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden">
+        <div style="height:100%;width:${e.importance*3}%;background:var(--accent2);border-radius:2px"></div>
+      </div>
+      <div style="font-size:10.5px;color:var(--muted);margin-top:2px">Value: ${e.value}</div>
+    </div>`;
+  });
+  // Reasons
+  document.getElementById('reasons-card').style.display='';
+  const rl=document.getElementById('reasons-list'); rl.innerHTML='';
+  d.reasons.forEach(r=>{
+    rl.innerHTML+=`<div style="display:flex;gap:9px;margin-bottom:8px;font-size:13px;color:var(--muted)">
+      <span style="color:var(--accent2);flex-shrink:0">•</span>${r}</div>`;
+  });
+}
+
+// Render global feature importance bars
+const fib=document.getElementById('fi-bars');
+const sorted=Object.entries(featureImportance).sort((a,b)=>b[1]-a[1]);
+sorted.forEach(([col,pct])=>{
+  fib.innerHTML+=`<div style="margin-bottom:8px">
+    <div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:3px">
+      <span style="color:var(--muted)">${featureLabels[col]}</span>
+      <span style="color:var(--accent);font-weight:600">${pct}%</span>
+    </div>
+    <div style="height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden">
+      <div style="height:100%;width:${pct*3}%;background:var(--accent);border-radius:2px"></div>
+    </div>
+  </div>`;
+});
+</script>
+{% endblock %}

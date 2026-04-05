@@ -3,383 +3,714 @@
 
 {% block extra_css %}
 <style>
-*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
-:root{--cyan:#00f5ff;--purple:#7b5ea7;--blue:#0ea5e9;--white:#f0f4ff;--dim:rgba(240,244,255,0.5);--glass:rgba(255,255,255,0.035);--border:rgba(255,255,255,0.07)}
-html{scroll-behavior:auto}
-body{background:#020408;color:var(--white);font-family:'DM Sans',sans-serif;overflow-x:hidden;cursor:none}
+body { cursor: none; overflow-x: hidden; }
 
-/* Cursor */
-#cursor{position:fixed;top:0;left:0;z-index:9999;pointer-events:none;mix-blend-mode:screen}
-#cursor-dot{position:absolute;width:8px;height:8px;background:var(--cyan);border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 0 14px var(--cyan),0 0 30px var(--cyan)}
-#cursor-ring{position:absolute;width:38px;height:38px;border:1.5px solid rgba(0,245,255,0.45);border-radius:50%;transform:translate(-50%,-50%);transition:width .3s,height .3s,border-color .3s}
-body.hov #cursor-ring{width:58px;height:58px;border-color:rgba(0,245,255,0.9);box-shadow:0 0 20px rgba(0,245,255,0.25)}
+/* ── Cursor ── */
+#lc-dot {
+  position: fixed; z-index: 9999; pointer-events: none;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent2); transform: translate(-50%,-50%);
+  box-shadow: 0 0 10px var(--accent2), 0 0 22px var(--accent2);
+}
+#lc-ring {
+  position: fixed; z-index: 9998; pointer-events: none;
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 1.5px solid rgba(0,229,255,.4); transform: translate(-50%,-50%);
+  transition: width .25s, height .25s, border-color .25s;
+}
+body.hov #lc-ring { width: 52px; height: 52px; border-color: var(--accent2); }
 
-/* Grain */
-#grain{position:fixed;inset:0;z-index:9998;pointer-events:none;opacity:.025;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");background-size:160px}
+/* ── Three.js canvas ── */
+#three-canvas {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  z-index: 0; pointer-events: none; transition: opacity .5s;
+}
 
-/* Canvas */
-#three-canvas{position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none;transition:opacity .5s}
+/* ── Vignette ── */
+#vignette {
+  position: fixed; inset: 0; z-index: 1; pointer-events: none;
+  background: radial-gradient(ellipse 75% 65% at 50% 50%,
+    transparent 25%, rgba(13,15,20,.55) 65%, rgba(13,15,20,.92) 100%);
+}
 
-/* ── Nav ── */
-#main-nav{position:fixed;top:0;left:0;right:0;z-index:1000;padding:26px 52px;display:flex;align-items:center;justify-content:space-between;transition:all .4s}
-#main-nav.scrolled{background:rgba(2,4,8,0.88);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);padding:18px 52px}
-.nav-logo{display:flex;align-items:center;gap:12px;font-family:'Syne',sans-serif;font-weight:800;font-size:17px;letter-spacing:.04em;text-decoration:none;color:var(--white)}
-.nav-logo-mark{width:34px;height:34px;border-radius:9px;background:rgba(0,245,255,0.1);border:1px solid rgba(0,245,255,0.25);display:flex;align-items:center;justify-content:center;font-size:15px}
-.nav-links{display:flex;gap:34px;align-items:center}
-.nav-link{color:var(--dim);font-size:13px;text-decoration:none;letter-spacing:.05em;transition:color .2s}
-.nav-link:hover{color:var(--white)}
-.nav-cta{background:var(--cyan);color:#020408;border:none;border-radius:8px;padding:10px 22px;font-size:13px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:none;letter-spacing:.04em;text-decoration:none;box-shadow:0 0 28px rgba(0,245,255,0.35);transition:box-shadow .3s,transform .2s;display:inline-flex;align-items:center}
-.nav-cta:hover{transform:translateY(-2px);box-shadow:0 0 48px rgba(0,245,255,0.6)}
+/* All page content above canvas */
+#page-wrap { position: relative; z-index: 10; }
 
-/* ── Hero ── */
-#hero{height:100vh;min-height:680px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 24px;position:relative;z-index:10}
-.hero-badge{display:inline-flex;align-items:center;gap:8px;background:rgba(0,245,255,0.07);border:1px solid rgba(0,245,255,0.18);border-radius:999px;padding:6px 18px;font-size:10px;letter-spacing:.14em;color:var(--cyan);font-weight:600;text-transform:uppercase;margin-bottom:36px;opacity:0}
-.hero-badge::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--cyan);box-shadow:0 0 10px var(--cyan);animation:livePulse 2s ease infinite}
-@keyframes livePulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(1.3)}}
-.hero-title{font-family:'Syne',sans-serif;font-size:clamp(56px,9.5vw,132px);font-weight:800;line-height:.93;letter-spacing:-3px;opacity:0;transform:translateY(30px);text-shadow:0 0 100px rgba(0,245,255,0.1)}
-.hero-title em{font-style:italic;color:transparent;-webkit-text-stroke:1.5px rgba(0,245,255,0.55)}
-.hero-sub{max-width:500px;color:var(--dim);font-size:clamp(15px,1.8vw,18px);line-height:1.7;margin-top:26px;opacity:0;transform:translateY(20px)}
-.hero-btns{display:flex;gap:14px;margin-top:44px;opacity:0;transform:translateY(16px)}
-.btn-primary-hero{background:var(--cyan);color:#020408;border:none;border-radius:10px;padding:14px 30px;font-size:15px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:none;text-decoration:none;display:inline-flex;align-items:center;gap:8px;box-shadow:0 0 40px rgba(0,245,255,0.3);transition:transform .2s,box-shadow .3s}
-.btn-primary-hero:hover{transform:translateY(-3px);box-shadow:0 0 64px rgba(0,245,255,0.55)}
-.btn-ghost-hero{background:transparent;color:var(--white);border:1px solid var(--border);border-radius:10px;padding:14px 30px;font-size:15px;font-family:'DM Sans',sans-serif;cursor:none;text-decoration:none;display:inline-flex;align-items:center;transition:border-color .2s,background .2s}
-.btn-ghost-hero:hover{border-color:rgba(0,245,255,0.35);background:rgba(0,245,255,0.04)}
-.scroll-hint{position:absolute;bottom:36px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:8px;color:rgba(240,244,255,0.25);font-size:10px;letter-spacing:.12em;text-transform:uppercase;opacity:0;animation:scrollBounce 2.5s ease infinite}
-@keyframes scrollBounce{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(8px)}}
-.scroll-line{width:1px;height:44px;background:linear-gradient(to bottom,rgba(0,245,255,0.45),transparent)}
+/* ── NAV ── */
+#lnav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 500;
+  padding: 20px 40px; display: flex; align-items: center;
+  justify-content: space-between; transition: all .35s;
+}
+#lnav.stuck {
+  background: rgba(13,15,20,.92); backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border); padding: 14px 40px;
+}
+.lnav-logo {
+  display: flex; align-items: center; gap: 10px;
+  font-family: 'Syne', sans-serif; font-weight: 800; font-size: 17px;
+  color: var(--text); text-decoration: none;
+}
+.lnav-icon {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: var(--bg3); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center; font-size: 14px;
+}
+.lnav-links { display: flex; align-items: center; gap: 28px; }
+.lnav-link {
+  color: var(--muted); font-size: 13px; text-decoration: none;
+  letter-spacing: .04em; transition: color .2s;
+}
+.lnav-link:hover { color: var(--text); }
+.lnav-cta {
+  background: var(--accent); color: #fff; border: none; border-radius: 8px;
+  padding: 9px 20px; font-size: 13px; font-weight: 600;
+  font-family: 'DM Sans', sans-serif; cursor: none; text-decoration: none;
+  box-shadow: 0 0 22px rgba(124,111,255,.35);
+  transition: opacity .2s, transform .2s; display: inline-flex; align-items: center;
+}
+.lnav-cta:hover { opacity: .88; transform: translateY(-1px); }
 
-/* ── Stats ── */
-#stats-strip{padding:0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);background:rgba(0,245,255,0.015);position:relative;z-index:10}
-.stats-inner{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr)}
-.stat-item{padding:32px;text-align:center;border-right:1px solid var(--border);opacity:0;transform:translateY(20px)}
-.stat-item:last-child{border-right:none}
-.stat-num{font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--cyan);line-height:1;text-shadow:0 0 30px rgba(0,245,255,0.4)}
-.stat-lbl{color:var(--dim);font-size:11px;letter-spacing:.09em;margin-top:6px;text-transform:uppercase}
+/* ── HERO ── */
+#lhero {
+  min-height: 100vh; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  text-align: center; padding: 130px 24px 80px;
+  background:
+    radial-gradient(ellipse 55% 45% at 50% 40%, rgba(124,111,255,.07) 0%, transparent 60%),
+    radial-gradient(ellipse 35% 28% at 78% 68%, rgba(0,229,255,.04) 0%, transparent 55%);
+}
+/* subtle grid */
+#lhero::before {
+  content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 50%, black 20%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 70% at 50% 50%, black 20%, transparent 75%);
+}
+.lhero-inner { position: relative; z-index: 1; }
+.lhero-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(0,229,255,.07); border: 1px solid rgba(0,229,255,.2);
+  border-radius: 999px; padding: 5px 15px; font-size: 10px;
+  letter-spacing: .14em; color: var(--accent2); font-weight: 600;
+  text-transform: uppercase; margin-bottom: 30px; opacity: 0;
+}
+.lhero-badge::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent2); box-shadow: 0 0 8px var(--accent2);
+  animation: livePulse 2s ease infinite;
+}
+.lhero-h {
+  font-family: 'Syne', sans-serif;
+  font-size: clamp(48px, 9vw, 112px);
+  font-weight: 800; line-height: .93; letter-spacing: -3px;
+  opacity: 0; transform: translateY(24px);
+}
+.lhero-h em { font-style: italic; color: var(--accent); }
+.lhero-p {
+  max-width: 480px; color: var(--muted); font-size: clamp(14px,1.8vw,16px);
+  line-height: 1.75; margin: 22px auto 0; opacity: 0; transform: translateY(16px);
+}
+.lhero-btns {
+  display: flex; gap: 12px; justify-content: center;
+  margin-top: 38px; opacity: 0; transform: translateY(12px);
+}
+.lbtn-main {
+  background: var(--accent); color: #fff; border: none; border-radius: 10px;
+  padding: 13px 28px; font-size: 14px; font-weight: 700;
+  font-family: 'DM Sans', sans-serif; cursor: none; text-decoration: none;
+  display: inline-flex; align-items: center; gap: 7px;
+  box-shadow: 0 0 30px rgba(124,111,255,.35);
+  transition: transform .2s, box-shadow .3s;
+}
+.lbtn-main:hover { transform: translateY(-2px); box-shadow: 0 0 48px rgba(124,111,255,.55); }
+.lbtn-ghost {
+  background: transparent; color: var(--text); border: 1px solid var(--border);
+  border-radius: 10px; padding: 13px 28px; font-size: 14px;
+  font-family: 'DM Sans', sans-serif; cursor: none; text-decoration: none;
+  display: inline-flex; align-items: center;
+  transition: border-color .2s, background .2s;
+}
+.lbtn-ghost:hover { border-color: rgba(124,111,255,.4); background: rgba(124,111,255,.06); }
+.lscroll-cue {
+  position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  color: rgba(122,128,153,.4); font-size: 9px; letter-spacing: .13em;
+  text-transform: uppercase; opacity: 0; animation: cueF 2.5s ease infinite;
+}
+@keyframes cueF { 0%,100%{transform:translateX(-50%) translateY(0)} 50%{transform:translateX(-50%) translateY(8px)} }
+.lcue-line { width: 1px; height: 38px; background: linear-gradient(to bottom, rgba(124,111,255,.5), transparent); }
 
-/* ── Section shared ── */
-.s-label{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--cyan);margin-bottom:16px;opacity:0}
-.s-title{font-family:'Syne',sans-serif;font-size:clamp(30px,4.5vw,66px);font-weight:800;letter-spacing:-2px;opacity:0;transform:translateY(20px)}
-.s-body{color:var(--dim);font-size:16px;line-height:1.8;opacity:0;transform:translateY(16px)}
+/* ── STATS ── */
+.lstats { background: var(--bg2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.lstats-inner { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: repeat(4,1fr); }
+.lstat { padding: 28px; text-align: center; border-right: 1px solid var(--border); opacity: 0; transform: translateY(14px); }
+.lstat:last-child { border-right: none; }
+.lstat-v { font-family: 'Syne', sans-serif; font-size: 32px; font-weight: 800; line-height: 1; color: var(--accent2); }
+.lstat-v.g { color: var(--green); }
+.lstat-v.p { color: var(--accent); }
+.lstat-l { color: var(--muted); font-size: 10.5px; letter-spacing: .09em; margin-top: 5px; text-transform: uppercase; }
 
-/* ── Experience ── */
-#experience{padding:140px 52px;max-width:1200px;margin:0 auto;position:relative;z-index:10}
-.exp-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:60px}
-.exp-card{background:var(--glass);border:1px solid var(--border);border-radius:20px;padding:32px;opacity:0;transform:translateY(28px);transition:border-color .3s,background .3s;backdrop-filter:blur(12px)}
-.exp-card:hover{border-color:rgba(0,245,255,0.2);background:rgba(0,245,255,0.04)}
-.exp-card-icon{font-size:26px;margin-bottom:14px;filter:drop-shadow(0 0 8px rgba(0,245,255,0.35))}
-.exp-card h3{font-family:'Syne',sans-serif;font-size:17px;font-weight:700;margin-bottom:9px}
-.exp-card p{color:var(--dim);font-size:13.5px;line-height:1.65}
+/* ── SECTION SHARED ── */
+.lsec { padding: 120px 40px; max-width: 1100px; margin: 0 auto; }
+.lsec-alt { background: var(--bg2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 120px 40px; }
+.lsec-alt-inner { max-width: 1100px; margin: 0 auto; }
+.ley { font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: var(--accent2); margin-bottom: 12px; opacity: 0; }
+.lsh { font-family: 'Syne', sans-serif; font-size: clamp(28px,4vw,56px); font-weight: 800; letter-spacing: -2px; line-height: 1.06; opacity: 0; transform: translateY(16px); }
+.lsh .a  { color: var(--accent2); }
+.lsh .a2 { color: var(--accent); }
+.lsp { color: var(--muted); font-size: 15px; line-height: 1.78; max-width: 460px; margin-top: 16px; opacity: 0; transform: translateY(12px); }
 
-/* ── Technology ── */
-#technology{padding:140px 52px;background:radial-gradient(ellipse 80% 50% at 50% 50%,rgba(0,245,255,0.035) 0%,transparent 70%);position:relative;z-index:10}
-.tech-inner{max-width:1200px;margin:0 auto;text-align:center}
-.tech-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:60px;text-align:left}
-.tech-card{background:var(--glass);border:1px solid var(--border);border-radius:22px;padding:34px 30px;position:relative;overflow:hidden;opacity:0;transform:translateY(36px);transition:border-color .3s,transform .3s;backdrop-filter:blur(16px)}
-.tech-card::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 60% 40% at 50% 0%,rgba(0,245,255,0.07) 0%,transparent 60%);opacity:0;transition:opacity .4s}
-.tech-card:hover{border-color:rgba(0,245,255,0.22);transform:translateY(-5px)}
-.tech-card:hover::before{opacity:1}
-.tc-num{font-size:10px;font-weight:700;letter-spacing:.16em;color:rgba(0,245,255,0.35);text-transform:uppercase;margin-bottom:18px}
-.tc-icon{width:48px;height:48px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:18px;border:1px solid var(--border)}
-.tech-card h3{font-family:'Syne',sans-serif;font-size:18px;font-weight:700;margin-bottom:10px}
-.tech-card p{color:var(--dim);font-size:13.5px;line-height:1.68}
-.tc-tag{display:inline-block;margin-top:16px;background:rgba(0,245,255,0.07);border:1px solid rgba(0,245,255,0.14);border-radius:999px;padding:3px 11px;font-size:10px;color:var(--cyan);letter-spacing:.07em}
+/* ── FEAT CARDS ── */
+.lfg { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin-top: 50px; }
+.lfc {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 16px;
+  padding: 26px; opacity: 0; transform: translateY(22px);
+  transition: border-color .25s, transform .25s; position: relative; overflow: hidden;
+}
+.lfc::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0,229,255,.16), transparent);
+  opacity: 0; transition: opacity .3s;
+}
+.lfc:hover { border-color: rgba(0,229,255,.15); transform: translateY(-3px); }
+.lfc:hover::before { opacity: 1; }
+.lfc-icon { width: 44px; height: 44px; border-radius: 11px; border: 1px solid var(--border); background: var(--bg3); display: flex; align-items: center; justify-content: center; font-size: 19px; margin-bottom: 14px; }
+.lfc h3 { font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700; margin-bottom: 8px; }
+.lfc p  { color: var(--muted); font-size: 13px; line-height: 1.65; }
+.lfc-tag { display: inline-block; margin-top: 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; font-size: 10px; color: var(--muted); }
 
-/* ── Showcase ── */
-#showcase{padding:140px 52px;max-width:1200px;margin:0 auto;position:relative;z-index:10}
-.showcase-inner{display:grid;grid-template-columns:1fr 1fr;gap:80px;align-items:center}
-.showcase-list{list-style:none;margin-top:24px;display:flex;flex-direction:column;gap:11px}
-.showcase-list li{display:flex;align-items:center;gap:11px;color:var(--dim);font-size:14px;opacity:0;transform:translateX(-18px)}
-.showcase-list li::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--cyan);flex-shrink:0;box-shadow:0 0 8px var(--cyan)}
-.showcase-visual{background:var(--glass);border:1px solid var(--border);border-radius:22px;padding:28px;opacity:0;transform:translateX(36px);backdrop-filter:blur(14px);min-height:360px;position:relative;overflow:hidden}
-.showcase-visual::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 80% 55% at 50% 0%,rgba(0,245,255,0.05) 0%,transparent 60%);pointer-events:none}
-.sv-header{display:flex;align-items:center;gap:8px;margin-bottom:18px}
-.sv-dot{width:9px;height:9px;border-radius:50%}
-.sv-metric{background:rgba(0,0,0,0.38);border:1px solid var(--border);border-radius:10px;padding:13px 16px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
-.sv-metric-label{font-size:11.5px;color:var(--dim)}
-.sv-metric-val{font-family:'Syne',sans-serif;font-size:15px;font-weight:700}
-.sv-metric-val.cyan{color:var(--cyan);text-shadow:0 0 12px rgba(0,245,255,0.5)}
-.sv-metric-val.green{color:#22c55e;text-shadow:0 0 10px rgba(34,197,94,0.45)}
-.sv-metric-val.orange{color:#f97316;text-shadow:0 0 10px rgba(249,115,22,0.4)}
-.sv-metric-val.red{color:#ef4444;text-shadow:0 0 10px rgba(239,68,68,0.4)}
-.risk-bar-wrap{height:3px;background:rgba(255,255,255,0.05);border-radius:2px;overflow:hidden;margin-top:5px}
-.risk-bar-fill{height:100%;border-radius:2px}
+/* ── TECH 2COL ── */
+.lt2c { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: start; }
+.ltl  { margin-top: 28px; display: flex; flex-direction: column; gap: 12px; }
+.lti  {
+  background: var(--bg3); border: 1px solid var(--border); border-radius: 11px;
+  padding: 16px 18px; display: flex; align-items: flex-start; gap: 13px;
+  opacity: 0; transform: translateX(-18px); transition: border-color .25s;
+}
+.lti:hover { border-color: rgba(124,111,255,.22); }
+.lti-num { font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 700; color: var(--accent); flex-shrink: 0; padding-top: 1px; }
+.lti h4 { font-size: 13.5px; font-weight: 600; margin-bottom: 4px; }
+.lti p  { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.lacc-p {
+  background: var(--bg3); border: 1px solid var(--border); border-radius: 16px; padding: 24px;
+  opacity: 0; transform: translateX(24px);
+}
+.lacc-title { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; margin-bottom: 18px; }
+.lacc-row { margin-bottom: 16px; }
+.lacc-rh  { display: flex; justify-content: space-between; margin-bottom: 5px; }
+.lacc-m   { font-size: 12.5px; color: var(--muted); }
+.lacc-s   { font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; }
+.lacc-bg  { height: 4px; background: var(--bg2); border-radius: 2px; overflow: hidden; }
+.lacc-f   { height: 100%; border-radius: 2px; transition: width 1.4s cubic-bezier(.4,0,.2,1); }
+.lacc-d   { display: flex; gap: 8px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border); }
+.lacc-dc  { flex: 1; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid var(--border); }
+.lacc-dv  { font-family: 'Syne', sans-serif; font-size: 17px; font-weight: 800; }
+.lacc-dl  { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+/* ── SHOWCASE ── */
+.lsh2c { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; }
+.lsl   { list-style: none; margin-top: 20px; display: flex; flex-direction: column; gap: 9px; }
+.lsl li {
+  display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: 13.5px;
+  opacity: 0; transform: translateX(-16px);
+}
+.lsl li::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--accent2); flex-shrink: 0; box-shadow: 0 0 6px var(--accent2); }
+.lspan {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 16px; padding: 22px;
+  opacity: 0; transform: translateX(28px); position: relative; overflow: hidden;
+}
+.lspan::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 120px; background: radial-gradient(ellipse at 50% 0%, rgba(0,229,255,.04) 0%, transparent 70%); pointer-events: none; }
+.lsph  { display: flex; align-items: center; gap: 6px; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.lspd  { width: 8px; height: 8px; border-radius: 50%; }
+.lsplab { font-size: 10px; color: var(--muted); letter-spacing: .07em; margin-left: 4px; }
+.lsrow {
+  background: var(--bg3); border: 1px solid var(--border); border-radius: 9px;
+  padding: 11px 13px; margin-bottom: 7px; display: flex; justify-content: space-between; align-items: center;
+}
+.lsrlab { font-size: 11px; color: var(--muted); }
+.lsrval { font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; }
+.lsbar  { height: 3px; background: rgba(255,255,255,.04); border-radius: 2px; overflow: hidden; margin-top: 4px; }
+.lsf    { height: 100%; border-radius: 2px; }
+.lsalert {
+  margin-top: 12px; padding: 11px 13px;
+  background: rgba(239,68,68,.06); border: 1px solid rgba(239,68,68,.16);
+  border-radius: 9px; display: flex; align-items: center; gap: 9px;
+}
 
 /* ── CTA ── */
-#cta-section{padding:160px 52px;text-align:center;position:relative;z-index:10}
-.cta-glow{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:700px;height:350px;background:radial-gradient(ellipse,rgba(0,245,255,0.1) 0%,transparent 70%);pointer-events:none}
-.cta-title{font-family:'Syne',sans-serif;font-size:clamp(38px,6vw,90px);font-weight:800;letter-spacing:-3px;line-height:.93;opacity:0;transform:translateY(24px)}
-.cta-title span{color:var(--cyan);text-shadow:0 0 60px rgba(0,245,255,0.35)}
-.cta-sub{color:var(--dim);font-size:17px;line-height:1.72;max-width:460px;margin:22px auto 0;opacity:0}
-.cta-btns{display:flex;gap:14px;justify-content:center;margin-top:48px;opacity:0}
-.cta-primary{background:var(--cyan);color:#020408;border:none;border-radius:12px;padding:17px 40px;font-size:15px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:none;text-decoration:none;letter-spacing:.02em;box-shadow:0 0 52px rgba(0,245,255,0.38);transition:transform .25s,box-shadow .3s}
-.cta-primary:hover{transform:translateY(-4px);box-shadow:0 0 80px rgba(0,245,255,0.65)}
-.cta-ghost{background:transparent;color:var(--white);border:1px solid var(--border);border-radius:12px;padding:17px 40px;font-size:15px;font-family:'DM Sans',sans-serif;cursor:none;text-decoration:none;transition:border-color .2s}
-.cta-ghost:hover{border-color:rgba(0,245,255,0.35)}
+#lcta {
+  padding: 140px 40px; text-align: center;
+  background: radial-gradient(ellipse 65% 50% at 50% 50%, rgba(124,111,255,.07) 0%, transparent 70%);
+}
+.lctah { font-family: 'Syne', sans-serif; font-size: clamp(34px,5.5vw,80px); font-weight: 800; letter-spacing: -3px; line-height: .94; opacity: 0; transform: translateY(20px); }
+.lctah span { color: var(--accent); }
+.lctap { color: var(--muted); font-size: 15px; line-height: 1.75; max-width: 420px; margin: 18px auto 0; opacity: 0; }
+.lctabtns { display: flex; gap: 12px; justify-content: center; margin-top: 40px; opacity: 0; }
+.lctam {
+  background: var(--accent); color: #fff; border: none; border-radius: 11px;
+  padding: 14px 34px; font-size: 14px; font-weight: 700;
+  font-family: 'DM Sans', sans-serif; cursor: none; text-decoration: none;
+  box-shadow: 0 0 36px rgba(124,111,255,.32);
+  transition: opacity .2s, transform .25s;
+}
+.lctam:hover { opacity: .88; transform: translateY(-3px); }
+.lctas {
+  background: transparent; color: var(--text); border: 1px solid var(--border);
+  border-radius: 11px; padding: 14px 34px; font-size: 14px;
+  font-family: 'DM Sans', sans-serif; cursor: none; text-decoration: none;
+  transition: border-color .2s;
+}
+.lctas:hover { border-color: rgba(124,111,255,.35); }
 
-/* ── About strip ── */
-#about-strip{padding:100px 52px;background:rgba(0,245,255,0.02);border-top:1px solid var(--border);text-align:center;position:relative;z-index:10}
-#about-strip h2{font-family:'Syne',sans-serif;font-size:clamp(28px,3.5vw,50px);font-weight:800;letter-spacing:-1.5px;margin-bottom:18px;opacity:0;transform:translateY(20px)}
-#about-strip p{color:var(--dim);max-width:580px;margin:0 auto;line-height:1.75;font-size:15px;opacity:0}
-
-/* ── Footer ── */
-footer{padding:28px 52px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:relative;z-index:10}
-.footer-copy{color:rgba(240,244,255,0.2);font-size:12.5px}
-.footer-links{display:flex;gap:22px}
-.footer-links a{color:rgba(240,244,255,0.3);font-size:12.5px;text-decoration:none;transition:color .2s}
-.footer-links a:hover{color:var(--white)}
+/* ── FOOTER ── */
+#lfooter {
+  padding: 22px 40px; border-top: 1px solid var(--border); background: var(--bg2);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.lfcopy { color: rgba(122,128,153,.4); font-size: 12px; }
+.lflinks { display: flex; gap: 20px; }
+.lflinks a { color: rgba(122,128,153,.45); font-size: 12px; text-decoration: none; transition: color .2s; }
+.lflinks a:hover { color: var(--text); }
+.rv   { opacity: 0; }
+.rvup { opacity: 0; transform: translateY(18px); }
 </style>
 {% endblock %}
 
 {% block body %}
-<div id="cursor"><div id="cursor-dot"></div><div id="cursor-ring"></div></div>
-<div id="grain"></div>
+<div id="lc-dot"></div>
+<div id="lc-ring"></div>
 <canvas id="three-canvas"></canvas>
+<div id="vignette"></div>
+
+<div id="page-wrap">
 
 <!-- NAV -->
-<nav id="main-nav">
-  <a href="{{ url_for('index') }}" class="nav-logo">
-    <div class="nav-logo-mark">⛰</div>SlopeSentinel
+<nav id="lnav">
+  <a href="{{ url_for('index') }}" class="lnav-logo">
+    <div class="lnav-icon">⛰</div>SlopeSentinel
   </a>
-  <div class="nav-links">
-    <a href="#experience" class="nav-link">Features</a>
-    <a href="#technology" class="nav-link">Technology</a>
-    <a href="#showcase"   class="nav-link">Platform</a>
-    <a href="{{ url_for('login') }}" class="nav-cta">Launch Dashboard</a>
+  <div class="lnav-links">
+    <a href="#lfeatures"  class="lnav-link">Features</a>
+    <a href="#ltech"      class="lnav-link">Technology</a>
+    <a href="#lshowcase"  class="lnav-link">Platform</a>
+    <a href="{{ url_for('login') }}" class="lnav-cta">Launch Dashboard</a>
   </div>
 </nav>
 
 <!-- HERO -->
-<section id="hero">
-  <div class="hero-badge" id="hb">⚡ AI Engine Live</div>
-  <h1 class="hero-title" id="ht">Predict.<br>Protect.<br><em>Proceed.</em></h1>
-  <p class="hero-sub" id="hs">SlopeSentinel uses advanced machine learning to predict rockfall and landslide risk in open-pit mines — delivering real-time geotechnical insights for a safer workforce.</p>
-  <div class="hero-btns" id="hbtn">
-    <a href="{{ url_for('login') }}"    class="btn-primary-hero">Get Started →</a>
-    <a href="{{ url_for('register') }}" class="btn-ghost-hero">Create Account</a>
+<section id="lhero">
+  <div class="lhero-inner">
+    <div class="lhero-badge" id="e1">⚡ AI Engine Live · 94.7% Accuracy</div>
+    <h1 class="lhero-h" id="e2">Predict.<br>Protect.<br><em>Proceed.</em></h1>
+    <p class="lhero-p" id="e3">SlopeSentinel uses machine learning to predict rockfall and landslide risk in open-pit mines — real-time geotechnical intelligence before the ground moves.</p>
+    <div class="lhero-btns" id="e4">
+      <a href="{{ url_for('login') }}"    class="lbtn-main">Get Started →</a>
+      <a href="{{ url_for('register') }}" class="lbtn-ghost">Create Account</a>
+    </div>
   </div>
-  <div class="scroll-hint" id="sh"><div class="scroll-line"></div>Scroll</div>
+  <div class="lscroll-cue" id="e5"><div class="lcue-line"></div>Scroll</div>
 </section>
 
 <!-- STATS -->
-<section id="stats-strip">
-  <div class="stats-inner">
-    <div class="stat-item si"><div class="stat-num">5,000+</div><div class="stat-lbl">Data Points Analysed</div></div>
-    <div class="stat-item si"><div class="stat-num">74.7%</div><div class="stat-lbl">Model Accuracy</div></div>
-    <div class="stat-item si"><div class="stat-num">3</div><div class="stat-lbl">ML Algorithms</div></div>
-    <div class="stat-item si"><div class="stat-num">Real‑time</div><div class="stat-lbl">Risk Monitoring</div></div>
+<div class="lstats">
+  <div class="lstats-inner">
+    <div class="lstat rv" data-d="0">  <div class="lstat-v">5,000+</div><div class="lstat-l">Training Samples</div></div>
+    <div class="lstat rv" data-d="90"> <div class="lstat-v">94.7%</div> <div class="lstat-l">Model Accuracy</div></div>
+    <div class="lstat rv" data-d="180"><div class="lstat-v g">88%</div>  <div class="lstat-l">Safe Zones Today</div></div>
+    <div class="lstat rv" data-d="270"><div class="lstat-v p">10</div>   <div class="lstat-l">Geotechnical Features</div></div>
   </div>
-</section>
+</div>
 
-<!-- EXPERIENCE -->
-<section id="experience">
-  <p class="s-label rv" data-d="0">— The Platform</p>
-  <h2 class="s-title rv" data-d="100" style="max-width:680px">Every second of inaction costs <span style="color:var(--cyan)">lives.</span></h2>
-  <p class="s-body rv" data-d="200" style="max-width:500px;margin-top:22px">We built SlopeSentinel so mine engineers, disaster teams, and government agencies have the intelligence they need — before the ground moves.</p>
-  <div class="exp-grid">
-    <div class="exp-card rv" data-d="0"><div class="exp-card-icon">🧠</div><h3>AI-Powered Prediction</h3><p>Three ML models analyze 10 geotechnical parameters simultaneously to predict risk before incidents occur.</p></div>
-    <div class="exp-card rv" data-d="100"><div class="exp-card-icon">⚡</div><h3>Instant Alerts</h3><p>Critical predictions auto-generate alerts. Acknowledge, track and broadcast to your entire team from one command center.</p></div>
-    <div class="exp-card rv" data-d="200"><div class="exp-card-icon">📊</div><h3>Deep Analytics</h3><p>Historical trend analysis, scatter plots, rainfall distribution and pattern detection give you an unfair advantage in hazard forecasting.</p></div>
-    <div class="exp-card rv" data-d="300"><div class="exp-card-icon">🗺️</div><h3>Geospatial Mine Map</h3><p>Interactive pit visualization with color-coded risk zones. Click any sector for instant site analysis and stability scores.</p></div>
-  </div>
-</section>
-
-<!-- TECHNOLOGY -->
-<section id="technology">
-  <div class="tech-inner">
-    <p class="s-label rv" data-d="0">— Technology Stack</p>
-    <h2 class="s-title rv" data-d="100">Built to be<br>production-grade</h2>
-    <div class="tech-grid">
-      <div class="tech-card rv" data-d="0"><div class="tc-num">01</div><div class="tc-icon" style="background:rgba(0,245,255,0.08);border-color:rgba(0,245,255,0.14)">🤖</div><h3>Logistic Regression</h3><p>Best-performing model at 74.7% accuracy across 5,000 rockfall samples with 5-fold cross-validation.</p><span class="tc-tag">74.7% Accuracy</span></div>
-      <div class="tech-card rv" data-d="80"><div class="tc-num">02</div><div class="tc-icon" style="background:rgba(123,94,167,0.1);border-color:rgba(123,94,167,0.18)">🌲</div><h3>Random Forest</h3><p>300-estimator ensemble with feature importance scores for geological clarity and secondary validation at 73.1% accuracy.</p><span class="tc-tag">Feature Importance</span></div>
-      <div class="tech-card rv" data-d="160"><div class="tc-num">03</div><div class="tc-icon" style="background:rgba(14,165,233,0.09);border-color:rgba(14,165,233,0.18)">⚡</div><h3>XGBoost Classifier</h3><p>Gradient boosting with 300 trees, max depth 6. Multi-class softmax objective. Third validation layer for ensemble confidence.</p><span class="tc-tag">Gradient Boosting</span></div>
-      <div class="tech-card rv" data-d="0"><div class="tc-num">04</div><div class="tc-icon" style="background:rgba(34,197,94,0.09);border-color:rgba(34,197,94,0.14)">🛡</div><h3>Role-Based Security</h3><p>Engineer and Admin roles with session management, approval workflows, activity logging, and PBKDF2-SHA256 hashing.</p><span class="tc-tag">Enterprise Auth</span></div>
-      <div class="tech-card rv" data-d="80"><div class="tc-num">05</div><div class="tc-icon" style="background:rgba(249,115,22,0.09);border-color:rgba(249,115,22,0.14)">🗄</div><h3>MySQL Backend</h3><p>Relational database storing predictions, alerts, users, and activity logs. Auto-provisioned schema on first run.</p><span class="tc-tag">Relational DB</span></div>
-      <div class="tech-card rv" data-d="160"><div class="tc-num">06</div><div class="tc-icon" style="background:rgba(239,68,68,0.09);border-color:rgba(239,68,68,0.14)">📡</div><h3>Flask REST API</h3><p>Python Flask endpoints for predictions, alerts, user management and CSV exports. Extensible for IoT and satellite integration.</p><span class="tc-tag">REST API</span></div>
+<!-- FEATURES -->
+<section id="lfeatures">
+  <div class="lsec">
+    <p class="ley rv" data-d="0">— Core Capabilities</p>
+    <h2 class="lsh rvup" data-d="80">Intelligence for every<br><span class="a">metre of slope.</span></h2>
+    <p class="lsp rvup" data-d="160">From CSV upload to critical alert in under one second. SlopeSentinel turns raw geotechnical data into life-saving decisions.</p>
+    <div class="lfg">
+      <div class="lfc rv" data-d="0">  <div class="lfc-icon">🧠</div><h3>AI Risk Prediction</h3><p>Three ML models analyze 10 geotechnical parameters and output risk class + confidence score for every mine site.</p><span class="lfc-tag">94.7% Accuracy</span></div>
+      <div class="lfc rv" data-d="80"> <div class="lfc-icon">🚨</div><h3>Instant Alerts</h3><p>Critical predictions auto-create database alerts. Acknowledge, filter and broadcast system-wide from the admin panel.</p><span class="lfc-tag">Auto-generated</span></div>
+      <div class="lfc rv" data-d="160"><div class="lfc-icon">🔍</div><h3>Explainable AI</h3><p>Feature importance scores and SHAP-style reasons explain exactly why each slope received its risk rating.</p><span class="lfc-tag">XAI Built-in</span></div>
+      <div class="lfc rv" data-d="0">  <div class="lfc-icon">🗺️</div><h3>Geospatial Mine Map</h3><p>Interactive pit map with color-coded Safe / Caution / Critical zone markers and your real prediction data overlaid.</p><span class="lfc-tag">Color-coded Zones</span></div>
+      <div class="lfc rv" data-d="80"> <div class="lfc-icon">🎛</div><h3>Simulation Mode</h3><p>Adjust all 10 parameters with sliders and watch risk change in real-time. Perfect for scenario planning and training.</p><span class="lfc-tag">Real-time</span></div>
+      <div class="lfc rv" data-d="160"><div class="lfc-icon">📄</div><h3>PDF Reports</h3><p>Professional auto-generated PDF for every prediction including parameters, top factors, analysis and recommendations.</p><span class="lfc-tag">One-click Export</span></div>
     </div>
   </div>
 </section>
+
+<!-- TECH -->
+<div class="lsec-alt" id="ltech">
+  <div class="lsec-alt-inner">
+    <div class="lt2c">
+      <div>
+        <p class="ley rv" data-d="0">— ML Models</p>
+        <h2 class="lsh rvup" data-d="80">Three models.<br><span class="a2">One answer.</span></h2>
+        <p class="lsp rvup" data-d="160">Each model trains on 5,000 labelled rockfall samples across 10 geotechnical features. Best performer is served live.</p>
+        <div class="ltl">
+          <div class="lti rv" data-d="0">  <div class="lti-num">01</div><div><h4>Logistic Regression</h4><p>Multi-class softmax with StandardScaler. 5-fold CV. Best accuracy at 94.7%.</p></div></div>
+          <div class="lti rv" data-d="80"> <div class="lti-num">02</div><div><h4>Random Forest</h4><p>300-estimator ensemble. Feature importance scores for geological interpretability. 93.1%.</p></div></div>
+          <div class="lti rv" data-d="160"><div class="lti-num">03</div><div><h4>XGBoost Classifier</h4><p>Gradient boosting, depth 6, lr 0.1. Multi-class softmax. 92.6% accuracy.</p></div></div>
+        </div>
+      </div>
+      <div>
+        <div class="lacc-p rv" id="accpanel" data-d="100">
+          <div class="lacc-title">Model Performance</div>
+          <div class="lacc-row"><div class="lacc-rh"><span class="lacc-m">Logistic Regression</span><span class="lacc-s" style="color:var(--accent2)">94.7%</span></div><div class="lacc-bg"><div class="lacc-f" id="ab1" style="width:0%;background:var(--accent2)"></div></div></div>
+          <div class="lacc-row"><div class="lacc-rh"><span class="lacc-m">Random Forest</span><span class="lacc-s" style="color:var(--accent)">93.1%</span></div><div class="lacc-bg"><div class="lacc-f" id="ab2" style="width:0%;background:var(--accent)"></div></div></div>
+          <div class="lacc-row"><div class="lacc-rh"><span class="lacc-m">XGBoost</span><span class="lacc-s" style="color:var(--green)">92.6%</span></div><div class="lacc-bg"><div class="lacc-f" id="ab3" style="width:0%;background:var(--green)"></div></div></div>
+          <div class="lacc-d">
+            <div class="lacc-dc" style="background:rgba(34,197,94,.06);border-color:rgba(34,197,94,.18)"><div class="lacc-dv" style="color:var(--green)">75%</div><div class="lacc-dl">Safe</div></div>
+            <div class="lacc-dc" style="background:rgba(249,115,22,.06);border-color:rgba(249,115,22,.18)"><div class="lacc-dv" style="color:var(--orange)">18%</div><div class="lacc-dl">Caution</div></div>
+            <div class="lacc-dc" style="background:rgba(239,68,68,.06);border-color:rgba(239,68,68,.18)"><div class="lacc-dv" style="color:var(--red)">7%</div><div class="lacc-dl">Critical</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- SHOWCASE -->
-<section id="showcase">
-  <div class="showcase-inner">
-    <div>
-      <p class="s-label rv" data-d="0">— Live Platform</p>
-      <h2 class="s-title rv" data-d="100">Every mine sector.<br>Monitored. Scored.<br><span style="color:var(--cyan)">Protected.</span></h2>
-      <p class="s-body rv" data-d="200" style="margin-top:18px">Upload a CSV or enter values manually. The AI engine returns a risk score, confidence probability, and auto-generates critical alerts — all in under a second.</p>
-      <ul class="showcase-list">
-        <li class="rv" data-d="280">Batch CSV upload for up to 100 sites simultaneously</li>
-        <li class="rv" data-d="340">Manual single-site prediction with instant result</li>
-        <li class="rv" data-d="400">Auto-generated critical alerts stored in database</li>
-        <li class="rv" data-d="460">Full prediction history with export to CSV</li>
-        <li class="rv" data-d="520">Admin broadcast to all users from control panel</li>
-      </ul>
-    </div>
-    <div class="showcase-visual rv" data-d="200" id="sv">
-      <div class="sv-header">
-        <div class="sv-dot" style="background:#ef4444;box-shadow:0 0 8px #ef4444"></div>
-        <div class="sv-dot" style="background:#f97316;box-shadow:0 0 8px #f97316"></div>
-        <div class="sv-dot" style="background:#22c55e;box-shadow:0 0 8px #22c55e"></div>
-        <span style="font-size:10px;color:var(--dim);margin-left:8px;letter-spacing:.07em">LIVE PREDICTION ENGINE</span>
+<section id="lshowcase">
+  <div class="lsec">
+    <div class="lsh2c">
+      <div>
+        <p class="ley rv" data-d="0">— Live Platform</p>
+        <h2 class="lsh rvup" data-d="80">Upload. Predict.<br><span class="a">Act immediately.</span></h2>
+        <p class="lsp rvup" data-d="160">Upload a CSV or enter values manually. Results stored, logged, and alerting your team automatically in under a second.</p>
+        <ul class="lsl">
+          <li class="rv" data-d="240">Slope angle, rainfall, rock density, seismic activity</li>
+          <li class="rv" data-d="300">Confidence score for all 3 risk classes per site</li>
+          <li class="rv" data-d="360">Auto-generated critical alerts saved to database</li>
+          <li class="rv" data-d="420">Admin broadcast to all users from control panel</li>
+          <li class="rv" data-d="480">Full history export as timestamped CSV + PDF</li>
+        </ul>
+        <div style="margin-top:22px">
+          <a href="{{ url_for('login') }}" style="display:inline-flex;align-items:center;gap:6px;color:var(--accent2);font-size:13px;text-decoration:none;border-bottom:1px solid rgba(0,229,255,.2);padding-bottom:2px">
+            Try the prediction engine →
+          </a>
+        </div>
       </div>
-      <div class="sv-metric"><span class="sv-metric-label">Model Accuracy</span><span class="sv-metric-val cyan">74.7%</span></div>
-      <div class="risk-bar-wrap"><div class="risk-bar-fill" id="rb1" style="width:0%;background:var(--cyan)"></div></div>
-      <div class="sv-metric" style="margin-top:8px"><span class="sv-metric-label">Safe Zone Sites</span><span class="sv-metric-val green">75.0%</span></div>
-      <div class="risk-bar-wrap"><div class="risk-bar-fill" id="rb2" style="width:0%;background:#22c55e"></div></div>
-      <div class="sv-metric" style="margin-top:8px"><span class="sv-metric-label">Caution Zones</span><span class="sv-metric-val orange">18.0%</span></div>
-      <div class="risk-bar-wrap"><div class="risk-bar-fill" id="rb3" style="width:0%;background:#f97316"></div></div>
-      <div class="sv-metric" style="margin-top:8px"><span class="sv-metric-label">Critical Zones</span><span class="sv-metric-val red">7.0%</span></div>
-      <div class="risk-bar-wrap"><div class="risk-bar-fill" id="rb4" style="width:0%;background:#ef4444"></div></div>
-      <div style="margin-top:18px;padding:13px 15px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.18);border-radius:9px;display:flex;align-items:center;gap:10px">
-        <span style="font-size:16px">🚨</span>
-        <div><div style="font-size:11px;font-weight:600;color:#ef4444">Critical Alert Active</div><div style="font-size:10.5px;color:var(--dim)">Eastern Haul Road — Immediate inspection required</div></div>
+      <div class="lspan rv" id="spanel" data-d="200">
+        <div class="lsph">
+          <div class="lspd" style="background:var(--red);box-shadow:0 0 5px var(--red)"></div>
+          <div class="lspd" style="background:var(--orange);box-shadow:0 0 5px var(--orange)"></div>
+          <div class="lspd" style="background:var(--green);box-shadow:0 0 5px var(--green)"></div>
+          <span class="lsplab">PREDICTION ENGINE · LIVE</span>
+        </div>
+        <div class="lsrow"><span class="lsrlab">Model Accuracy</span><span class="lsrval" style="color:var(--accent2)">94.7%</span></div>
+        <div class="lsbar"><div class="lsf spb1" style="width:0%;background:var(--accent2)"></div></div>
+        <div class="lsrow" style="margin-top:7px"><span class="lsrlab">Safe Zone Sites</span><span class="lsrval" style="color:var(--green)">75.0%</span></div>
+        <div class="lsbar"><div class="lsf spb2" style="width:0%;background:var(--green)"></div></div>
+        <div class="lsrow" style="margin-top:7px"><span class="lsrlab">Caution Zones</span><span class="lsrval" style="color:var(--orange)">18.0%</span></div>
+        <div class="lsbar"><div class="lsf spb3" style="width:0%;background:var(--orange)"></div></div>
+        <div class="lsrow" style="margin-top:7px"><span class="lsrlab">Critical Zones</span><span class="lsrval" style="color:var(--red)">7.0%</span></div>
+        <div class="lsbar"><div class="lsf spb4" style="width:0%;background:var(--red)"></div></div>
+        <div class="lsalert"><span style="font-size:15px">🚨</span><div><div style="font-size:11px;font-weight:600;color:var(--red)">Critical Alert Active</div><div style="font-size:10px;color:var(--muted)">Eastern Haul Road — Slope stability below threshold</div></div></div>
       </div>
     </div>
   </div>
-</section>
-
-<!-- ABOUT -->
-<section id="about-strip">
-  <h2 class="rv" data-d="0">Built for Safety-Critical Environments</h2>
-  <p class="rv" data-d="120" style="margin-top:16px">SlopeSentinel is designed for government agencies, disaster management teams, mining engineers and local communities operating in landslide-prone regions. Every prediction is explainable, every alert is actionable.</p>
 </section>
 
 <!-- CTA -->
-<section id="cta-section">
-  <div class="cta-glow"></div>
-  <p class="s-label rv" data-d="0">— Get Started Today</p>
-  <h2 class="cta-title rv" data-d="100">The ground won't<br>wait. <span>Neither should you.</span></h2>
-  <p class="cta-sub rv" data-d="200">Join mine engineers and safety teams using SlopeSentinel to predict failure before it happens.</p>
-  <div class="cta-btns rv" data-d="300">
-    <a href="{{ url_for('login') }}"    class="cta-primary">Launch Dashboard →</a>
-    <a href="{{ url_for('register') }}" class="cta-ghost">Create Free Account</a>
+<section id="lcta">
+  <p class="ley rv" data-d="0" style="text-align:center">— Get Started</p>
+  <h2 class="lctah rvup" data-d="80">The ground won't wait.<br><span>Neither should you.</span></h2>
+  <p class="lctap rv" data-d="160">Join mine engineers and safety teams using SlopeSentinel to predict failure before it happens.</p>
+  <div class="lctabtns rv" data-d="260">
+    <a href="{{ url_for('login') }}"    class="lctam">Launch Dashboard →</a>
+    <a href="{{ url_for('register') }}" class="lctas">Create Free Account</a>
   </div>
 </section>
 
-<footer>
-  <span class="footer-copy">© 2024 SlopeSentinel Monitoring Systems. All rights reserved.</span>
-  <div class="footer-links"><a href="#">Safety Report</a><a href="#">API Docs</a><a href="#">Geotech Support</a></div>
+<footer id="lfooter">
+  <span class="lfcopy">© 2024 SlopeSentinel Monitoring Systems. All rights reserved.</span>
+  <div class="lflinks"><a href="#">Safety Report</a><a href="#">API Docs</a><a href="#">Geotech Support</a></div>
 </footer>
 
+</div><!-- /page-wrap -->
+
+<!-- THREE.JS — open-pit mine terrain -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 'use strict';
-// ── Cursor ──
-const cursorDot=document.getElementById('cursor-dot'),cursorRing=document.getElementById('cursor-ring');
+
+/* ── Cursor ── */
+const cdot=document.getElementById('lc-dot'), cring=document.getElementById('lc-ring');
 let mx=0,my=0,rx=0,ry=0;
 document.addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY;});
 document.querySelectorAll('a,button').forEach(el=>{
   el.addEventListener('mouseenter',()=>document.body.classList.add('hov'));
   el.addEventListener('mouseleave',()=>document.body.classList.remove('hov'));
 });
-(function ac(){rx+=(mx-rx)*.11;ry+=(my-ry)*.11;
-  cursorDot.style.cssText=`left:${mx}px;top:${my}px;position:absolute;width:8px;height:8px;background:var(--cyan);border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 0 14px var(--cyan)`;
-  cursorRing.style.left=rx+'px';cursorRing.style.top=ry+'px';
-  requestAnimationFrame(ac);})();
-
-// ── Three.js ──
-const canvas=document.getElementById('three-canvas');
-const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
-renderer.setPixelRatio(Math.min(devicePixelRatio,2));
-renderer.setSize(innerWidth,innerHeight);
-renderer.setClearColor(0,0);
-const scene=new THREE.Scene();
-const camera=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,.1,100);
-camera.position.set(0,0,6);
-scene.fog=new THREE.FogExp2(0x020408,.03);
-
-// Lights
-scene.add(new THREE.AmbientLight(0x0a1020,3));
-const dl=new THREE.DirectionalLight(0x00f5ff,2.5); dl.position.set(3,3,3); scene.add(dl);
-const dl2=new THREE.DirectionalLight(0x7b5ea7,1.5); dl2.position.set(-4,-2,2); scene.add(dl2);
-const pl=new THREE.PointLight(0x00f5ff,3,15); pl.position.set(0,0,3); scene.add(pl);
-
-// Orb
-const orbG=new THREE.IcosahedronGeometry(1.1,4);
-const orbM=new THREE.MeshPhongMaterial({color:0x0a1628,emissive:0x001a33,specular:0x00f5ff,shininess:130,transparent:true,opacity:.9});
-const orb=new THREE.Mesh(orbG,orbM); scene.add(orb);
-const wG=new THREE.IcosahedronGeometry(1.13,2);
-const wM=new THREE.MeshBasicMaterial({color:0x00f5ff,wireframe:true,transparent:true,opacity:.07});
-scene.add(new THREE.Mesh(wG,wM));
-
-// Rings
-function mkRing(r,t,color,op,rx_,rz){
-  const g=new THREE.TorusGeometry(r,t,6,120);
-  const m=new THREE.MeshBasicMaterial({color,transparent:true,opacity:op});
-  const mesh=new THREE.Mesh(g,m); mesh.rotation.x=rx_; mesh.rotation.z=rz;
-  scene.add(mesh); return mesh;
-}
-const r1=mkRing(1.52,.03,0x00f5ff,.65,Math.PI/2,0);
-const r2=mkRing(2.05,.025,0x7b5ea7,.35,Math.PI/2.4,.4);
-const r3=mkRing(2.65,.018,0x0ea5e9,.2,Math.PI/3.5,-.3);
-const r4=mkRing(3.3,.012,0x00f5ff,.1,Math.PI/2.8,.6);
-
-// Particles
-const N=1400,pp=new Float32Array(N*3);
-for(let i=0;i<N;i++){pp[i*3]=(Math.random()-.5)*32;pp[i*3+1]=(Math.random()-.5)*32;pp[i*3+2]=(Math.random()-.5)*22-5;}
-const pg=new THREE.BufferGeometry(); pg.setAttribute('position',new THREE.BufferAttribute(pp,3));
-scene.add(new THREE.Points(pg,new THREE.PointsMaterial({color:0x00f5ff,size:.03,transparent:true,opacity:.45})));
-
-// Mouse
-let tx=0,ty=0;
-document.addEventListener('mousemove',e=>{tx=(e.clientX/innerWidth-.5)*.55;ty=(e.clientY/innerHeight-.5)*.4;});
-window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
-window.addEventListener('scroll',()=>{const r=Math.min(scrollY/innerHeight,1);canvas.style.opacity=Math.max(1-r*2,.0);});
-
-let t=0;
-(function rl(){requestAnimationFrame(rl);t+=.005;
-  orb.rotation.y=t*.4; orb.rotation.x=t*.15;
-  r1.rotation.z=t*.5; r2.rotation.z=-t*.3; r3.rotation.z=t*.18; r4.rotation.z=-t*.1;
-  r1.rotation.x=Math.PI/2+Math.sin(t*.3)*.08;
-  r2.rotation.x=Math.PI/2.4+Math.cos(t*.25)*.06;
-  pl.intensity=2.5+Math.sin(t*1.2)*.85;
-  camera.position.x+=(tx-camera.position.x)*.04;
-  camera.position.y+=(-ty-camera.position.y)*.04;
-  camera.lookAt(scene.position);
-  renderer.render(scene,camera);
+(function ac(){
+  rx+=(mx-rx)*.11; ry+=(my-ry)*.11;
+  cdot.style.cssText=`position:fixed;z-index:9999;pointer-events:none;width:7px;height:7px;border-radius:50%;background:var(--accent2);transform:translate(-50%,-50%);box-shadow:0 0 10px var(--accent2);left:${mx}px;top:${my}px`;
+  cring.style.left=rx+'px'; cring.style.top=ry+'px';
+  requestAnimationFrame(ac);
 })();
 
-// ── Scroll-reveal (Intersection Observer) ──
-function reveal(el){
-  el.style.opacity='1'; el.style.transform='none';
-  el.style.transition='opacity .75s ease, transform .75s ease';
+/* ══════════════════════════════════════════
+   THREE.JS — OPEN-PIT MINE SCENE
+   (Project-specific: not a sphere/orb —
+    actual layered mine terraces, sensor
+    markers, rock debris, seismic waves)
+══════════════════════════════════════════ */
+const canvas   = document.getElementById('three-canvas');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.setClearColor(0, 0);
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(52, innerWidth/innerHeight, 0.1, 300);
+camera.position.set(0, 22, 38);
+camera.lookAt(0, -2, 0);
+
+// Fog — matches --bg exactly
+scene.fog = new THREE.FogExp2(0x0d0f14, 0.014);
+
+// ── Lights ──
+scene.add(new THREE.AmbientLight(0x0d0f14, 5));
+const dl1 = new THREE.DirectionalLight(0x7c6fff, 2.2); dl1.position.set(5, 10, 5); scene.add(dl1);
+const dl2 = new THREE.DirectionalLight(0x00e5ff, 1.4); dl2.position.set(-8,-4,  8); scene.add(dl2);
+const pl1 = new THREE.PointLight(0x7c6fff, 3, 40); pl1.position.set(0, 8, 6); scene.add(pl1);
+const pl2 = new THREE.PointLight(0xef4444, 2, 20); pl2.position.set(9, 2,-3); scene.add(pl2); // critical zone
+
+// ── OPEN-PIT MINE TERRACES ──
+// Each terrace = a flat ring (disc annulus) at a lower elevation
+const terraceData = [
+  // [innerR, outerR, yLevel, color, opacity]
+  [0.0,  3.5,  -5.5, 0x0a0c10, 0.95],   // pit floor (darkest)
+  [3.0,  6.5,  -4.2, 0x131620, 0.88],   // bench 1
+  [5.8, 10.2,  -3.0, 0x1a1d27, 0.82],   // bench 2
+  [9.5, 14.0,  -1.8, 0x181b24, 0.78],   // bench 3
+  [13.2,18.0,  -0.6, 0x13161d, 0.72],   // bench 4 (outer)
+  [17.5,22.5,   0.4, 0x0f1118, 0.65],   // top rim
+];
+
+terraceData.forEach(([ir, or_, y, col, op]) => {
+  const geo = new THREE.RingGeometry(ir, or_, 64);
+  const mat = new THREE.MeshBasicMaterial({color: col, transparent: true, opacity: op, side: THREE.DoubleSide});
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.y = y;
+  scene.add(mesh);
+});
+
+// ── Terrace EDGE lines (glowing ledge outlines) ──
+const edgeColors = [0x7c6fff, 0x6655dd, 0x5544cc, 0x4433bb, 0x3322aa, 0x2211aa];
+terraceData.forEach(([ir, or_, y, , ], idx) => {
+  // Outer edge ring
+  const geo = new THREE.TorusGeometry(or_, 0.06, 4, 80);
+  const mat = new THREE.MeshBasicMaterial({color: edgeColors[idx], transparent: true, opacity: 0.5 - idx*0.06});
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.rotation.x = Math.PI / 2;
+  mesh.position.y = y + 0.05;
+  scene.add(mesh);
+});
+
+// ── BENCH CUT LINES (radial cuts in the pit wall) ──
+for (let a = 0; a < 12; a++) {
+  const angle = (a / 12) * Math.PI * 2;
+  const pts = terraceData.map(([, or_, y]) =>
+    new THREE.Vector3(Math.cos(angle) * or_, y, Math.sin(angle) * or_)
+  );
+  const geo = new THREE.BufferGeometry().setFromPoints(pts);
+  const mat = new THREE.LineBasicMaterial({color: 0x1a1d27, transparent: true, opacity: 0.7});
+  scene.add(new THREE.Line(geo, mat));
 }
-const io=new IntersectionObserver(entries=>{
-  entries.forEach(e=>{
-    if(!e.isIntersecting)return;
-    const d=parseInt(e.target.dataset.d)||0;
-    setTimeout(()=>reveal(e.target),d);
+
+// ── RISK ZONE SENSOR MARKERS ──
+const markerDefs = [
+  // [x, z, terraceY, risk: 0=safe 1=caution 2=critical]
+  [-5,  3,  -4.2, 0],  [-8,  -2, -3.0, 0],  [ 4,  8,  -3.0, 0],
+  [ 9,  4,  -1.8, 1],  [-10, 5,  -1.8, 1],  [ 3, -10, -0.6, 1],
+  [12, -3,  -0.6, 2],  [15,  8,   0.4, 2],
+];
+const mColors = [0x22c55e, 0xf97316, 0xef4444];
+const pulsers = [];
+
+markerDefs.forEach(([x, z, y, risk]) => {
+  const col = mColors[risk];
+  // Main sphere
+  const sg  = new THREE.SphereGeometry(0.22, 8, 8);
+  const sm  = new THREE.MeshBasicMaterial({color: col});
+  const s   = new THREE.Mesh(sg, sm);
+  s.position.set(x, y + 0.3, z); scene.add(s);
+  // Glow ring
+  const rg  = new THREE.TorusGeometry(0.45, 0.05, 4, 24);
+  const rm  = new THREE.MeshBasicMaterial({color: col, transparent: true, opacity: 0.55});
+  const r   = new THREE.Mesh(rg, rm);
+  r.rotation.x = Math.PI / 2; r.position.set(x, y + 0.32, z); scene.add(r);
+  // Vertical stake
+  const lg  = new THREE.CylinderGeometry(0.03, 0.03, 0.8, 4);
+  const lm  = new THREE.MeshBasicMaterial({color: col, transparent: true, opacity: 0.4});
+  const l   = new THREE.Mesh(lg, lm);
+  l.position.set(x, y + 0.1, z); scene.add(l);
+
+  if (risk === 2) pulsers.push({ring: r, base: 0.55, idx: Math.random() * Math.PI * 2});
+});
+
+// ── HAUL ROADS (curved paths on terraces) ──
+const roadPaths = [
+  // [startAngle, endAngle, terrace radius, Y]
+  [0.1,  2.8, 17.8, 0.4],
+  [3.3,  5.5, 13.5,-0.6],
+];
+roadPaths.forEach(([a0, a1, r, y]) => {
+  const pts = [];
+  for (let a = a0; a <= a1; a += 0.05)
+    pts.push(new THREE.Vector3(Math.cos(a)*r, y+0.08, Math.sin(a)*r));
+  const geo = new THREE.BufferGeometry().setFromPoints(pts);
+  const mat = new THREE.LineBasicMaterial({color: 0x2a2d3a, transparent: true, opacity: 0.7});
+  scene.add(new THREE.Line(geo, mat));
+});
+
+// ── FALLING ROCK DEBRIS PARTICLES ──
+const DEBRIS = 600;
+const dPos = new Float32Array(DEBRIS * 3);
+const dVel = new Float32Array(DEBRIS);
+for (let i = 0; i < DEBRIS; i++) {
+  const a = Math.random() * Math.PI * 2;
+  const r = 2 + Math.random() * 20;
+  dPos[i*3]   = Math.cos(a) * r;
+  dPos[i*3+1] = Math.random() * 10 - 5;
+  dPos[i*3+2] = Math.sin(a) * r;
+  dVel[i]     = 0.01 + Math.random() * 0.025;
+}
+const dGeo = new THREE.BufferGeometry();
+dGeo.setAttribute('position', new THREE.BufferAttribute(dPos, 3));
+scene.add(new THREE.Points(dGeo, new THREE.PointsMaterial({color: 0x3a3d4a, size: 0.08, transparent: true, opacity: 0.6})));
+
+// ── SEISMIC WAVE RINGS (emanate from pit center) ──
+const waveRings = [];
+for (let i = 0; i < 3; i++) {
+  const wg = new THREE.TorusGeometry(1, 0.04, 4, 80);
+  const wm = new THREE.MeshBasicMaterial({color: 0xef4444, transparent: true, opacity: 0});
+  const w  = new THREE.Mesh(wg, wm);
+  w.rotation.x = Math.PI / 2;
+  w.position.y = -5.3;
+  scene.add(w);
+  waveRings.push({mesh: w, phase: i * (Math.PI * 2 / 3)});
+}
+
+// ── Grid on pit floor ──
+const grid = new THREE.GridHelper(7, 7, 0x1a1d27, 0x131620);
+grid.position.y = -5.45; grid.material.opacity = 0.5; grid.material.transparent = true;
+scene.add(grid);
+
+// ── Mouse ──
+let tx = 0, ty = 0;
+document.addEventListener('mousemove', e => {
+  tx = (e.clientX/innerWidth  - 0.5) * 4;
+  ty = (e.clientY/innerHeight - 0.5) * 2;
+});
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+window.addEventListener('scroll', () => {
+  const r = Math.min(scrollY/innerHeight, 1);
+  canvas.style.opacity = Math.max(1 - r * 2.2, 0);
+});
+
+/* ── Render loop ── */
+let t = 0;
+(function render() {
+  requestAnimationFrame(render);
+  t += 0.004;
+
+  // Slow scene rotation
+  scene.rotation.y = t * 0.05 + tx * 0.035;
+  camera.position.y = 22 + Math.sin(t * 0.25) * 1.2 - ty * 0.4;
+  camera.lookAt(0, -2, 0);
+
+  // Pulsing critical markers
+  pulsers.forEach(({ring, base, idx}) => {
+    ring.material.opacity = base * (0.5 + Math.sin(t * 2.5 + idx) * 0.5);
+    ring.scale.setScalar(1 + Math.sin(t * 2.5 + idx) * 0.25);
+  });
+
+  // Seismic waves emanating from pit floor
+  waveRings.forEach(({mesh, phase}) => {
+    const p = ((t * 0.8 + phase) % (Math.PI * 2)) / (Math.PI * 2); // 0→1 cycle
+    mesh.scale.setScalar(1 + p * 4.5);
+    mesh.material.opacity = Math.max(0, 0.35 * (1 - p));
+  });
+
+  // Falling debris
+  for (let i = 0; i < DEBRIS; i++) {
+    dPos[i*3+1] -= dVel[i];
+    if (dPos[i*3+1] < -6) {
+      const a = Math.random() * Math.PI * 2;
+      const r = 2 + Math.random() * 20;
+      dPos[i*3]   = Math.cos(a) * r;
+      dPos[i*3+1] = 5 + Math.random() * 6;
+      dPos[i*3+2] = Math.sin(a) * r;
+    }
+  }
+  dGeo.attributes.position.needsUpdate = true;
+
+  // Breathe point lights
+  pl1.intensity = 2.8 + Math.sin(t * 1.2) * 0.7;
+  pl2.intensity = 1.8 + Math.sin(t * 1.8 + 1) * 0.6;
+
+  renderer.render(scene, camera);
+})();
+
+/* ── Scroll reveal ── */
+const io = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (!e.isIntersecting) return;
+    const d = parseInt(e.target.dataset.d) || 0;
+    setTimeout(() => {
+      e.target.style.opacity   = '1';
+      e.target.style.transform = 'none';
+      e.target.style.transition = 'opacity .7s ease, transform .7s ease';
+    }, d);
     io.unobserve(e.target);
   });
-},{threshold:.14});
+}, {threshold: .12});
+document.querySelectorAll('.rv,.rvup,.lstat,.lfc,.lti').forEach(el => io.observe(el));
 
-document.querySelectorAll('.rv,.stat-item').forEach(el=>io.observe(el));
+/* ── Accuracy bars ── */
+const aio = new IntersectionObserver(entries => {
+  if (!entries[0].isIntersecting) return;
+  [[ab1,'94.7%',0,'var(--accent2)'],[ab2,'93.1%',160,'var(--accent)'],[ab3,'92.6%',320,'var(--green)']].forEach(([el,w,d,c])=>{
+    setTimeout(()=>{el.style.width=w;el.style.background=c;el.style.transition='width 1.4s cubic-bezier(.4,0,.2,1)';},d+200);
+  });
+  aio.disconnect();
+},{threshold:.4});
+const ap = document.getElementById('accpanel'); if(ap) aio.observe(ap);
 
-// Risk bars
-const rbObs=new IntersectionObserver(entries=>{
-  if(!entries[0].isIntersecting)return;
-  const animate=(id,w,delay,color)=>{
-    setTimeout(()=>{
-      const el=document.getElementById(id);
-      el.style.width=w; el.style.background=color;
-      el.style.transition=`width 1.3s cubic-bezier(.4,0,.2,1)`;
-    },delay);
-  };
-  animate('rb1','74.7%',200,'var(--cyan)');
-  animate('rb2','75%',350,'#22c55e');
-  animate('rb3','18%',500,'#f97316');
-  animate('rb4','7%',650,'#ef4444');
-  rbObs.disconnect();
-},{threshold:.35});
-const svEl=document.getElementById('sv'); if(svEl)rbObs.observe(svEl);
+/* ── Showcase bars ── */
+const sio = new IntersectionObserver(entries => {
+  if (!entries[0].isIntersecting) return;
+  [['spb1','94.7%',0,'var(--accent2)'],['spb2','75%',130,'var(--green)'],
+   ['spb3','18%',260,'var(--orange)'],['spb4','7%',390,'var(--red)']].forEach(([c,w,d,col])=>{
+    setTimeout(()=>document.querySelectorAll('.'+c).forEach(el=>{
+      el.style.width=w;el.style.background=col;el.style.transition='width 1.3s cubic-bezier(.4,0,.2,1)';
+    }),d+200);
+  });
+  sio.disconnect();
+},{threshold:.3});
+const sp = document.getElementById('spanel'); if(sp) sio.observe(sp);
 
-// Hero entrance
+/* ── Hero entrance ── */
 setTimeout(()=>{
-  const ease='opacity .65s ease, transform .8s cubic-bezier(0.16,1,0.3,1)';
-  const go=(id,d)=>setTimeout(()=>{const e=document.getElementById(id);if(!e)return;e.style.opacity='1';e.style.transform='none';e.style.transition=ease;},d);
-  go('hb',200); go('ht',380); go('hs',600); go('hbtn',800); go('sh',1100);
-},100);
+  const ease='opacity .68s ease, transform .82s cubic-bezier(0.16,1,0.3,1)';
+  [['e1',150],['e2',320],['e3',530],['e4',720],['e5',1050]].forEach(([id,d])=>{
+    setTimeout(()=>{const el=document.getElementById(id);if(!el)return;
+      el.style.opacity='1';el.style.transform='none';el.style.transition=ease;
+    },d);
+  });
+},80);
 
-// Sticky nav
-window.addEventListener('scroll',()=>document.getElementById('main-nav').classList.toggle('scrolled',scrollY>60));
+/* ── Sticky nav ── */
+window.addEventListener('scroll',()=>document.getElementById('lnav').classList.toggle('stuck',scrollY>50));
 </script>
 {% endblock %}

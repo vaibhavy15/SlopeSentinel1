@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block title %}Explainable AI — SlopeSentinel{% endblock %}
+{% block body %}
+<div id="dashboard">
+  <div class="dash-layout">
+    {% set active='xai' %}{% include '_sidebar.html' %}
+    <main class="main-panel">
+      <div class="page-header">
+        <div class="page-title"><h2>Explainable AI</h2><p>Understand exactly why each slope received its risk score.</p></div>
+      </div>
+
+      <div style="padding:0 32px 32px;display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:start">
+
+        <!-- Main panel -->
+        <div style="display:flex;flex-direction:column;gap:20px">
+
+          <!-- Global feature importance -->
+          <div class="chart-card">
+            <h3 style="margin-bottom:4px">Global Feature Importance</h3>
+            <p class="chart-sub" style="margin-bottom:16px">Model coefficient weights — which parameters matter most</p>
+            <div style="position:relative;height:280px"><canvas id="fiChart"></canvas></div>
+          </div>
+
+          <!-- Prediction-level XAI -->
+          <div class="chart-card">
+            <h3 style="margin-bottom:4px">Per-Prediction Analysis</h3>
+            <p class="chart-sub" style="margin-bottom:16px">Click any prediction to see its full explanation</p>
+
+            {% if preds %}
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Site ID</th><th>Risk</th><th>Score</th><th>Top Factor</th><th>Date</th><th>Explain</th></tr></thead>
+                <tbody>
+                  {% for p in preds %}
+                  <tr>
+                    <td style="font-family:monospace;font-size:12px">{{ p.site_id }}</td>
+                    <td><span class="risk-pill {{ p.risk_label }}">{{ p.risk_label.capitalize() }}</span></td>
+                    <td>{{ "%.1f"|format(p.risk_score) }}%</td>
+                    <td style="font-size:12px;color:var(--muted)">{{ feature_labels.get(p.top_feature or '','—') }}</td>
+                    <td style="font-size:11px;color:var(--muted)">{{ p.created_at.strftime('%d %b %H:%M') }}</td>
+                    <td>
+                      <button class="btn-secondary" style="padding:4px 12px;font-size:12px"
+                              onclick="loadXAI({{ p.id }})">
+                        🔍 Explain
+                      </button>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+            <div style="text-align:center;padding:40px;color:var(--muted)">
+              No predictions yet. <a href="{{ url_for('upload_page') }}" style="color:var(--accent)">Upload data →</a>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Side panel -->
+        <div style="display:flex;flex-direction:column;gap:16px">
+
+          <!-- How it works -->
+          <div class="chart-card">
+            <h3 style="margin-bottom:14px">How XAI Works</h3>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              {% for step,desc in [
+                ('Model Coefficients','Logistic Regression weights show direct feature contribution to each risk class.'),
+                ('Importance Score','Absolute coefficient magnitude normalized to 100% shows relative feature power.'),
+                ('Top Factor','The single most influential parameter for each prediction.'),
+                ('Risk Reasons','Human-readable explanation based on actual parameter values vs thresholds.')
+              ] %}
+              <div style="display:flex;gap:10px;align-items:flex-start">
+                <div style="width:22px;height:22px;border-radius:6px;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--accent);flex-shrink:0">{{ loop.index }}</div>
+                <div><div style="font-size:12.5px;font-weight:600;margin-bottom:2px">{{ step }}</div><div style="font-size:11.5px;color:var(--muted);line-height:1.5">{{ desc }}</div></div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <!-- XAI result panel -->
+          <div class="chart-card" id="xai-panel">
+            <h3 style="margin-bottom:14px">Prediction Explanation</h3>
+            <div id="xai-empty" style="text-align:center;padding:20px;color:var(--muted);font-size:13px">
+              <div style="font-size:28px;margin-bottom:8px">🔍</div>
+              Click <strong>Explain</strong> on any prediction
+            </div>
+            <div id="xai-detail" style="display:none">
+              <div style="margin-bottom:14px">
+                <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700" id="xd-site"></div>
+                <div id="xd-badge" class="risk-badge" style="margin-top:4px"></div>
+                <div style="font-size:12px;color:var(--muted);margin-top:4px" id="xd-score"></div>
+              </div>
+              <div style="font-size:11px;color:var(--muted);letter-spacing:.06em;margin-bottom:8px">FACTOR CONTRIBUTIONS</div>
+              <div id="xd-factors"></div>
+              <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+                <div style="font-size:11px;color:var(--muted);letter-spacing:.06em;margin-bottom:8px">AI ANALYSIS</div>
+                <div id="xd-reasons"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Top factors across all predictions -->
+          {% if top_features %}
+          <div class="chart-card">
+            <h3 style="margin-bottom:14px">Most Recurring Top Factors</h3>
+            {% for tf in top_features %}
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+              <span style="font-size:12.5px;color:var(--text)">{{ feature_labels.get(tf.top_feature,'—') }}</span>
+              <span style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--accent)">{{ tf.cnt }}×</span>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+const fiData = {{ feature_importance_json|safe }};
+const flabels = {{ feature_labels|tojson }};
+
+// Global feature importance chart
+const sorted = Object.entries(fiData).sort((a,b)=>b[1]-a[1]);
+new Chart(document.getElementById('fiChart'),{
+  type:'bar',
+  data:{
+    labels: sorted.map(([k])=>flabels[k]||k),
+    datasets:[{label:'Importance %',data:sorted.map(([,v])=>v),
+      backgroundColor:'rgba(124,111,255,0.6)',borderColor:'#7c6fff',borderWidth:2,borderRadius:6}]
+  },
+  options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',
+    plugins:{legend:{display:false}},
+    scales:{
+      x:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#7a8099',font:{size:11}}},
+      y:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#7a8099',font:{size:11}}}
+    }}
+});
+
+async function loadXAI(predId){
+  document.getElementById('xai-empty').style.display='none';
+  document.getElementById('xai-detail').style.display='';
+  document.getElementById('xd-site').textContent='Loading…';
+  const res=await fetch(`/api/xai/${predId}`);
+  const d=await res.json();
+  if(d.error){alert(d.error);return;}
+  document.getElementById('xd-site').textContent=d.site_id;
+  const badge=document.getElementById('xd-badge');
+  badge.textContent=d.risk_label.charAt(0).toUpperCase()+d.risk_label.slice(1);
+  badge.className='risk-badge '+d.risk_label;
+  document.getElementById('xd-score').textContent='Risk Score: '+d.risk_score.toFixed(1)+'%';
+  const fc=document.getElementById('xd-factors'); fc.innerHTML='';
+  const riskColors={safe:'var(--green)',caution:'var(--orange)',critical:'var(--red)'};
+  const barColor=riskColors[d.risk_label]||'var(--accent)';
+  d.explanation.slice(0,8).forEach(e=>{
+    fc.innerHTML+=`<div style="margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:3px">
+        <span style="color:var(--text)">${e.label}</span>
+        <span style="color:${barColor};font-weight:600">${e.importance}%</span>
+      </div>
+      <div style="height:4px;background:rgba(255,255,255,.05);border-radius:2px;overflow:hidden">
+        <div style="height:100%;width:${Math.min(e.importance*3,100)}%;background:${barColor};border-radius:2px"></div>
+      </div>
+      <div style="font-size:10px;color:var(--muted);margin-top:1px">Value: ${e.value}</div>
+    </div>`;
+  });
+  const rl=document.getElementById('xd-reasons'); rl.innerHTML='';
+  d.reasons.forEach(r=>{
+    rl.innerHTML+=`<div style="display:flex;gap:8px;margin-bottom:7px;font-size:12.5px;color:var(--muted)">
+      <span style="color:var(--accent2);flex-shrink:0">•</span>${r}</div>`;
+  });
+}
+</script>
+{% endblock %}

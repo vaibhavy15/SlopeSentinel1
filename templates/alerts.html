@@ -3,24 +3,15 @@
 {% block body %}
 <div id="dashboard">
   <div class="dash-layout">
-    {% set active='alerts' %}{% include '_sidebar.html' %}
-
+    {% set active='alerts' %}{% set alert_count=unread %}{% include '_sidebar.html' %}
     <main class="main-panel">
       <div class="page-header">
-        <div class="page-title">
-          <h2>Security Alerts</h2>
-          <p>Automated AI risk detection event log — {{ unread }} unacknowledged.</p>
-        </div>
+        <div class="page-title"><h2>Security Alerts</h2><p>Automated AI risk detection — {{ unread }} unacknowledged.</p></div>
         <div class="header-actions">
-          {% if alerts %}
-          <button class="btn-secondary" onclick="ackAll()">✓ Acknowledge All</button>
-          {% endif %}
+          {% if alerts %}<button class="btn-secondary" onclick="ackAll()">✓ Acknowledge All</button>{% endif %}
         </div>
       </div>
-
       <div style="padding:0 32px 32px">
-
-        <!-- Filter chips -->
         <div class="alerts-toolbar">
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button class="filter-chip active" onclick="filterAlerts('all',this)">All ({{ alerts|length }})</button>
@@ -30,7 +21,6 @@
           </div>
           <span class="table-count">{{ unread }} unread</span>
         </div>
-
         {% if alerts %}
           {% for a in alerts %}
           <div class="admin-alert-card sev-{{ a.severity }} {% if a.acknowledged %}acked{% endif %}"
@@ -71,28 +61,9 @@
     </main>
   </div>
 </div>
-
 <script>
-function filterAlerts(sev, btn) {
-  document.querySelectorAll('.filter-chip').forEach(c=>c.classList.remove('active'));
-  btn.classList.add('active');
-  document.querySelectorAll('.admin-alert-card').forEach(c=>{
-    c.style.display = (sev==='all'||c.dataset.sev===sev)?'':'none';
-  });
-}
-async function ackAlert(id, btn) {
-  await fetch('/alerts/ack/'+id, {method:'POST'});
-  const card = document.getElementById('alert-'+id);
-  card.classList.add('acked');
-  btn.outerHTML = '<span style="font-size:12px;color:var(--green)">✓ Acknowledged</span>';
-}
-async function ackAll() {
-  await fetch('/alerts/ack-all', {method:'POST'});
-  document.querySelectorAll('.admin-alert-card').forEach(c=>{
-    c.classList.add('acked');
-    const b=c.querySelector('.ack-btn');
-    if(b) b.outerHTML='<span style="font-size:12px;color:var(--green)">✓ Acknowledged</span>';
-  });
-}
+function filterAlerts(sev,btn){document.querySelectorAll('.filter-chip').forEach(c=>c.classList.remove('active'));btn.classList.add('active');document.querySelectorAll('.admin-alert-card').forEach(c=>{c.style.display=(sev==='all'||c.dataset.sev===sev)?'':'none';});}
+async function ackAlert(id,btn){await fetch('/alerts/ack/'+id,{method:'POST'});document.getElementById('alert-'+id).classList.add('acked');btn.outerHTML='<span style="font-size:12px;color:var(--green)">✓ Acknowledged</span>';}
+async function ackAll(){await fetch('/alerts/ack-all',{method:'POST'});document.querySelectorAll('.admin-alert-card').forEach(c=>{c.classList.add('acked');const b=c.querySelector('.ack-btn');if(b)b.outerHTML='<span style="font-size:12px;color:var(--green)">✓ Acknowledged</span>';});}
 </script>
 {% endblock %}

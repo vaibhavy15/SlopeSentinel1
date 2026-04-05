@@ -1,26 +1,22 @@
 {% extends "base.html" %}
-{% block title %}Analysis — SlopeSentinel{% endblock %}
+{% block title %}Analytics — SlopeSentinel{% endblock %}
 {% block body %}
 <div id="dashboard">
   <div class="dash-layout">
     {% set active='analysis' %}{% include '_sidebar.html' %}
-
     <main class="main-panel">
       <div class="page-header">
-        <div class="page-title">
-          <h2>Prediction Analytics</h2>
-          <p>Historical analysis, trends and pattern detection across all your predictions.</p>
-        </div>
+        <div class="page-title"><h2>Prediction Analytics</h2><p>Historical analysis, trends and pattern detection.</p></div>
         <div class="header-actions">
           <a href="{{ url_for('export') }}" class="btn-secondary">⬇ Export Data</a>
+          <a href="{{ url_for('generate_bulk_report') }}" class="btn-secondary">📄 Bulk PDF</a>
+          <a href="{{ url_for('xai') }}" class="btn-new">🔍 XAI Analysis</a>
         </div>
       </div>
-
       <div style="padding:0 32px 32px">
-
-        <!-- Summary cards -->
+        <!-- Summary stats -->
         {% if stats %}
-        <div class="admin-stats-row" style="padding:0;margin-bottom:24px;grid-template-columns:repeat(3,1fr)">
+        <div class="admin-stats-row" style="padding:0;margin-bottom:20px;grid-template-columns:repeat(3,1fr)">
           {% for s in stats %}
           <div class="admin-stat">
             <div class="admin-stat-icon" style="background:{% if s.risk_label=='safe' %}rgba(34,197,94,.1){% elif s.risk_label=='caution' %}rgba(249,115,22,.1){% else %}rgba(239,68,68,.1){% endif %};color:{% if s.risk_label=='safe' %}var(--green){% elif s.risk_label=='caution' %}var(--orange){% else %}var(--red){% endif %}">
@@ -29,41 +25,49 @@
             <div>
               <div class="admin-stat-value">{{ s.cnt }}</div>
               <div class="admin-stat-label">{{ s.risk_label.capitalize() }} Predictions</div>
-              <div style="font-size:11px;color:var(--muted);margin-top:2px">Avg slope: {{ "%.1f"|format(s.avg_slope) }}°</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:1px">Avg slope: {{ "%.1f"|format(s.avg_slope) }}°</div>
             </div>
           </div>
           {% endfor %}
         </div>
         {% endif %}
 
-        <!-- Charts row -->
-        <div class="charts-row" style="margin-bottom:24px">
+        <!-- Charts row 1 -->
+        <div class="charts-row" style="margin-bottom:16px">
           <div class="chart-card">
-            <h3>Slope Angle vs Risk Score</h3>
-            <p class="chart-sub">Scatter: slope angle (X) vs risk score % (Y)</p>
-            <div style="position:relative;height:240px">
-              <canvas id="scatterChart"></canvas>
-            </div>
+            <h3>Slope Angle vs Rainfall</h3>
+            <p class="chart-sub">Scatter colored by risk class</p>
+            <div style="position:relative;height:240px"><canvas id="scatterChart"></canvas></div>
           </div>
           <div class="chart-card">
-            <h3>Rainfall Distribution</h3>
-            <p class="chart-sub">Average rainfall (mm) by risk category</p>
-            <div style="position:relative;height:240px">
-              <canvas id="rainfallBar"></canvas>
-            </div>
+            <h3>Avg Rainfall by Risk</h3>
+            <p class="chart-sub">Mean rainfall per category</p>
+            <div style="position:relative;height:240px"><canvas id="rainfallBar"></canvas></div>
           </div>
         </div>
 
-        <!-- History table -->
+        <!-- Charts row 2 -->
+        <div class="charts-row" style="margin-bottom:16px">
+          <div class="chart-card">
+            <h3>Feature Importance</h3>
+            <p class="chart-sub">Model coefficient weights</p>
+            <div style="position:relative;height:240px"><canvas id="fiChart"></canvas></div>
+          </div>
+          <div class="chart-card">
+            <h3>Risk Score Distribution</h3>
+            <p class="chart-sub">Prediction confidence spread</p>
+            <div style="position:relative;height:240px"><canvas id="scoreChart"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Prediction history -->
         <div class="chart-card">
           <h3 style="margin-bottom:4px">Prediction History</h3>
-          <p class="chart-sub">Last 50 analyses</p>
+          <p class="chart-sub" style="margin-bottom:14px">Last 50 analyses</p>
           {% if history %}
-          <div class="table-wrap" style="margin-top:16px">
+          <div class="table-wrap">
             <table>
-              <thead>
-                <tr><th>Site ID</th><th>Risk Label</th><th>Score</th><th>Slope°</th><th>Rainfall</th><th>Seismic</th><th>Date</th></tr>
-              </thead>
+              <thead><tr><th>Site ID</th><th>Risk</th><th>Score</th><th>Slope°</th><th>Rainfall</th><th>Top Factor</th><th>Date</th><th>Actions</th></tr></thead>
               <tbody>
                 {% for p in history %}
                 <tr>
@@ -72,136 +76,77 @@
                   <td>{{ "%.1f"|format(p.risk_score) }}%</td>
                   <td>{{ "%.1f"|format(p.slope_angle) }}°</td>
                   <td>{{ "%.0f"|format(p.rainfall) }} mm</td>
-                  <td>{{ "%.2f"|format(p.seismic) }}</td>
-                  <td style="color:var(--muted);font-size:12px">{{ p.created_at.strftime('%d %b %H:%M') }}</td>
+                  <td style="font-size:11px;color:var(--muted)">{{ p.top_feature or '—' }}</td>
+                  <td style="color:var(--muted);font-size:11px">{{ p.created_at.strftime('%d %b %H:%M') }}</td>
+                  <td>
+                    <div style="display:flex;gap:5px">
+                      <a href="{{ url_for('generate_report', pred_id=p.id) }}" class="btn-secondary" style="padding:3px 9px;font-size:11px">📄</a>
+                    </div>
+                  </td>
                 </tr>
                 {% endfor %}
               </tbody>
             </table>
           </div>
           {% else %}
-          <div style="text-align:center;padding:40px;color:var(--muted)">
-            No prediction history yet. <a href="{{ url_for('upload_page') }}" style="color:var(--accent)">Start predicting →</a>
-          </div>
+          <div style="text-align:center;padding:40px;color:var(--muted)">No history yet. <a href="{{ url_for('upload_page') }}" style="color:var(--accent)">Start predicting →</a></div>
           {% endif %}
         </div>
-
       </div>
     </main>
   </div>
 </div>
 
 <script>
-const scatter = {{ scatter_json|safe }};
-const colours = {0:'rgba(34,197,94,0.5)', 1:'rgba(249,115,22,0.5)', 2:'rgba(239,68,68,0.5)'};
-const borders = {0:'#22c55e', 1:'#f97316', 2:'#ef4444'};
+const scatter={{ scatter_json|safe }};
+const riskCounts={{ risk_counts|safe }};
+const fiData={{ feature_importance_json|safe }};
+const flabels={{ feature_labels|safe }};
+const cols={0:'rgba(34,197,94,0.5)',1:'rgba(249,115,22,0.5)',2:'rgba(239,68,68,0.5)'};
+const borders={0:'#22c55e',1:'#f97316',2:'#ef4444'};
 
-document.addEventListener('DOMContentLoaded', () => {
-
-  // ── Scatter chart: slope_angle (X) vs rainfall (Y), colored by risk class ──
-  const scatterCtx = document.getElementById('scatterChart');
-  if (scatter.length) {
-    const grouped = [0, 1, 2].map(cls => ({
-      label: ['Safe','Caution','Critical'][cls],
-      data:  scatter
-               .filter(d => d.risk_level === cls)
-               .map(d => ({ x: parseFloat(d.slope_angle) || 0,
-                            y: parseFloat(d.rainfall)    || 0 })),
-      backgroundColor: colours[cls],
-      borderColor:     borders[cls],
-      pointRadius: 5,
-      pointHoverRadius: 7
+document.addEventListener('DOMContentLoaded',()=>{
+  // Scatter
+  if(scatter.length){
+    const grouped=[0,1,2].map(cls=>({
+      label:['Safe','Caution','Critical'][cls],
+      data:scatter.filter(d=>d.risk_level===cls).map(d=>({x:parseFloat(d.slope_angle)||0,y:parseFloat(d.rainfall)||0})),
+      backgroundColor:cols[cls],borderColor:borders[cls],pointRadius:5,pointHoverRadius:7
     }));
-
-    new Chart(scatterCtx, {
-      type: 'scatter',
-      data: { datasets: grouped },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { labels: { color: '#7a8099', font: { size: 11 } } },
-          tooltip: {
-            callbacks: {
-              label: ctx => `Slope: ${ctx.parsed.x.toFixed(1)}°  Rainfall: ${ctx.parsed.y.toFixed(0)} mm`
-            }
-          }
-        },
-        scales: {
-          x: {
-            title: { display: true, text: 'Slope Angle (°)', color: '#7a8099' },
-            grid:  { color: 'rgba(255,255,255,0.05)' },
-            ticks: { color: '#7a8099' },
-            min: 0, suggestedMax: 90
-          },
-          y: {
-            title: { display: true, text: 'Rainfall (mm)', color: '#7a8099' },
-            grid:  { color: 'rgba(255,255,255,0.05)' },
-            ticks: { color: '#7a8099' },
-            min: 0, suggestedMax: 300
-          }
-        }
-      }
-    });
+    new Chart(document.getElementById('scatterChart'),{type:'scatter',data:{datasets:grouped},
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{labels:{color:'#7a8099',font:{size:11}}},
+          tooltip:{callbacks:{label:ctx=>`Slope: ${ctx.parsed.x.toFixed(1)}°  Rain: ${ctx.parsed.y.toFixed(0)}mm`}}},
+        scales:{x:{title:{display:true,text:'Slope Angle (°)',color:'#7a8099'},grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#7a8099'},min:0,suggestedMax:90},
+                y:{title:{display:true,text:'Rainfall (mm)',color:'#7a8099'},grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#7a8099'},min:0,suggestedMax:350}}}});
+    // Rainfall bar
+    const avgRain=[0,1,2].map(cls=>{const rows=scatter.filter(d=>d.risk_level===cls);return rows.length?rows.reduce((a,b)=>a+(parseFloat(b.rainfall)||0),0)/rows.length:0;});
+    const maxR=Math.max(...avgRain,1); const yMax=Math.ceil(maxR*1.35/10)*10;
+    new Chart(document.getElementById('rainfallBar'),{type:'bar',data:{labels:['Safe','Caution','Critical'],
+      datasets:[{label:'Avg Rainfall (mm)',data:avgRain,backgroundColor:['rgba(34,197,94,0.55)','rgba(249,115,22,0.55)','rgba(239,68,68,0.55)'],
+        borderColor:['#22c55e','#f97316','#ef4444'],borderWidth:2,borderRadius:6}]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#7a8099',font:{size:11}}}},
+        scales:{x:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#7a8099'}},
+                y:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#7a8099'},min:0,suggestedMax:yMax}}}});
+    // Score distribution histogram
+    const buckets=[0,0,0,0,0,0,0,0,0,0]; // 0-10,10-20,...,90-100
+    scatter.forEach(d=>{const b=Math.min(Math.floor((d.risk_score||0)/10),9);buckets[b]++;});
+    const maxBucket=Math.max(...buckets,1);
+    new Chart(document.getElementById('scoreChart'),{type:'bar',data:{labels:['0-10','10-20','20-30','30-40','40-50','50-60','60-70','70-80','80-90','90-100'],
+      datasets:[{label:'Predictions',data:buckets,backgroundColor:'rgba(124,111,255,0.55)',borderColor:'#7c6fff',borderWidth:2,borderRadius:4}]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#7a8099',font:{size:11}}}},
+        scales:{x:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#7a8099',font:{size:10}}},
+                y:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#7a8099',precision:0},min:0,suggestedMax:Math.ceil(maxBucket*1.35)}}}});
   } else {
-    const ctx = scatterCtx.getContext('2d');
-    ctx.fillStyle = '#7a8099';
-    ctx.font = '14px DM Sans';
-    ctx.textAlign = 'center';
-    ctx.fillText('No data yet — upload predictions first', scatterCtx.width / 2, 120);
+    ['scatterChart','rainfallBar','scoreChart'].forEach(id=>{const ctx=document.getElementById(id).getContext('2d');ctx.fillStyle='#7a8099';ctx.font='13px DM Sans';ctx.textAlign='center';ctx.fillText('No data yet — upload predictions first',ctx.canvas.width/2,100);});
   }
-
-  // ── Bar chart: average rainfall per risk category ──
-  const barCtx = document.getElementById('rainfallBar');
-  const labels   = ['Safe', 'Caution', 'Critical'];
-  const bgColors = ['rgba(34,197,94,0.55)', 'rgba(249,115,22,0.55)', 'rgba(239,68,68,0.55)'];
-  const bdColors = ['#22c55e', '#f97316', '#ef4444'];
-
-  const avgRain = [0, 1, 2].map(cls => {
-    const rows = scatter.filter(d => d.risk_level === cls);
-    if (!rows.length) return 0;
-    return rows.reduce((a, b) => a + (parseFloat(b.rainfall) || 0), 0) / rows.length;
-  });
-
-  // Find max value for a sensible Y ceiling (avoid infinite bar when only 1 category has data)
-  const maxRain    = Math.max(...avgRain, 1);
-  const suggestedMax = Math.ceil(maxRain * 1.35 / 10) * 10; // 35% headroom, rounded to nearest 10
-
-  new Chart(barCtx, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [{
-        label:           'Avg Rainfall (mm)',
-        data:            avgRain,
-        backgroundColor: bgColors,
-        borderColor:     bdColors,
-        borderWidth: 2,
-        borderRadius: 6,
-        borderSkipped: false
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { labels: { color: '#7a8099', font: { size: 11 } } }
-      },
-      scales: {
-        x: {
-          grid:  { color: 'rgba(255,255,255,0.05)' },
-          ticks: { color: '#7a8099' }
-        },
-        y: {
-          grid:         { color: 'rgba(255,255,255,0.05)' },
-          ticks:        { color: '#7a8099' },
-          min:          0,
-          suggestedMax: suggestedMax
-        }
-      }
-    }
-  });
-
+  // Feature importance horizontal bar
+  const sorted=Object.entries(fiData).sort((a,b)=>b[1]-a[1]);
+  new Chart(document.getElementById('fiChart'),{type:'bar',data:{labels:sorted.map(([k])=>flabels[k]||k),
+    datasets:[{label:'Importance %',data:sorted.map(([,v])=>v),backgroundColor:'rgba(0,229,255,0.5)',borderColor:'#00e5ff',borderWidth:2,borderRadius:4}]},
+    options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},
+      scales:{x:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#7a8099',font:{size:10}}},
+              y:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#7a8099',font:{size:9}}}}}});
 });
 </script>
 {% endblock %}
