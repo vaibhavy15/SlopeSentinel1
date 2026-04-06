@@ -731,7 +731,7 @@ Score: {last_pred['score']}%
 
     try:
         response = client.models.generate_content(
-            model="gemini-1.5-flash-latest",
+            model="gemini-1.5-flash",
             contents=prompt + "\nUser: " + user_msg
         )
 
