@@ -13,30 +13,24 @@ import pandas as pd, numpy as np, joblib
 import json, csv, io, os, secrets, random
 from decimal import Decimal
 from fpdf import FPDF
-from google import genai
 from dotenv import load_dotenv
+from google import genai
+
+# ✅ Load environment variables FIRST
 load_dotenv()
 
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+# ✅ Then get API key
+api_key = os.getenv("GEMINI_API_KEY")
 
-# ── Load .env file ─────────────────────────────────────────────────────────────
-def _load_dotenv():
-    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
-    if not os.path.exists(env_path):
-        return
+# ✅ Safe Gemini setup
+client = None
+if api_key:
     try:
-        from dotenv import load_dotenv
-        load_dotenv(env_path)
-    except ImportError:
-        with open(env_path) as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                key, _, val = line.partition("=")
-                os.environ.setdefault(key.strip(), val.strip().strip('"').strip("'"))
-
-_load_dotenv()
+        client = genai.Client(api_key=api_key)
+    except Exception as e:
+        print("Gemini init error:", e)
+else:
+    print("WARNING: GEMINI_API_KEY not found")
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "slopesentinel-dev-secret-2024")
@@ -874,6 +868,3 @@ def not_found(e): return render_template("404.html"), 404
 @app.errorhandler(500)
 def server_error(e): return render_template("404.html", code=500, msg="Internal server error."), 500
 
-if __name__ == "__main__":
-    setup_database()
-    app.run(debug=True, port=5000)
