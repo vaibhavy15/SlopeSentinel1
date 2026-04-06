@@ -31,6 +31,11 @@ if api_key:
         print("Gemini init error:", e)
 else:
     print("WARNING: GEMINI_API_KEY not found")
+GEMINI_MODELS = [
+    "gemini-1.5-flash",  # fast + free ✅
+    "gemini-1.5-flash-8b",  # lighter fallback ✅
+    "gemini-1.0-pro",  # older but stable ✅
+]
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "slopesentinel-dev-secret-2024")
@@ -697,8 +702,9 @@ You are SlopeSentinel AI Assistant.
 ONLY answer questions related to:
 - Slope stability
 - Landslides
-- Risk levels
+- Risk levels (Safe, Caution, Critical)
 - Geotechnical parameters
+- Safety recommendations
 
 If unrelated → say:
 "I can only answer slope-related questions."
@@ -709,6 +715,7 @@ User question:
 
     reply = None
 
+    # 🔥 LOOP THROUGH MODELS
     for model_name in GEMINI_MODELS:
         try:
             response = client.models.generate_content(
@@ -716,7 +723,7 @@ User question:
                 contents=prompt
             )
 
-            # ✅ Safe extraction
+            # ✅ SAFE RESPONSE EXTRACTION
             if hasattr(response, "text") and response.text:
                 reply = response.text
             else:
@@ -730,7 +737,7 @@ User question:
             continue
 
     if not reply:
-        reply = "⚠ AI is currently busy. Please try again."
+        reply = "⚠ AI is busy. Try again."
 
     return jsonify({"reply": reply})
 @app.route("/api/sensor-feed")
