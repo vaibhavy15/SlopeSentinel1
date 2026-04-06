@@ -31,11 +31,6 @@ if api_key:
         print("Gemini init error:", e)
 else:
     print("WARNING: GEMINI_API_KEY not found")
-GEMINI_MODELS = [
-    "gemini-1.5-flash",  # fast + free ✅
-    "gemini-1.5-flash-8b",  # lighter fallback ✅
-    "gemini-1.0-pro",  # older but stable ✅
-]
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "slopesentinel-dev-secret-2024")
@@ -687,57 +682,57 @@ CHAT_KB = {
     "help":       "I can help with: risk interpretation, model explanations, feature descriptions, alert management, simulation, and safety recommendations.",
 }
 
+@app.route("/chatbot")
+@login_required
+def chatbot():
+    conn = get_db(); cur = conn.cursor()
+    cur.execute("SELECT role,message,created_at FROM chat_history WHERE user_id=%s ORDER BY created_at DESC LIMIT 20", (session["user_id"],))
+    history = list(reversed(cur.fetchall())); cur.close(); conn.close()
+    return render_template("chatbot.html", history=history)
+
 @app.route('/api/chat', methods=['POST'])
 @login_required
 def chat_api():
     data = request.get_json()
     user_msg = data.get("message", "")
 
-    if not client:
-        return jsonify({"reply": "⚠ AI not configured."})
+    last_pred = session.get("last_prediction")
 
     prompt = f"""
 You are SlopeSentinel AI Assistant.
 
-ONLY answer questions related to:
+You ONLY answer questions related to:
 - Slope stability
 - Landslides
+- Geotechnical engineering
 - Risk levels (Safe, Caution, Critical)
-- Geotechnical parameters
-- Safety recommendations
+- Rainfall, groundwater, slope angle
+- ML models (Random Forest, XGBoost, Logistic Regression)
+- Simulation and safety
 
-If unrelated → say:
-"I can only answer slope-related questions."
+STRICT RULE:
+If question is unrelated → reply:
+"I can only answer questions related to slope stability and SlopeSentinel."
 
-User question:
-{user_msg}
 """
 
-    reply = None
+    if last_pred:
+        prompt += f"""
+User last prediction:
+Risk: {last_pred['risk']}
+Score: {last_pred['score']}%
+"""
 
-    # 🔥 LOOP THROUGH MODELS
-    for model_name in GEMINI_MODELS:
-        try:
-            response = client.models.generate_content(
-                model=model_name,
-                contents=prompt
-            )
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt + "\nUser: " + user_msg
+        )
 
-            # ✅ SAFE RESPONSE EXTRACTION
-            if hasattr(response, "text") and response.text:
-                reply = response.text
-            else:
-                reply = response.candidates[0].content.parts[0].text
+        reply = response.text
 
-            print(f"✅ Used model: {model_name}")
-            break
-
-        except Exception as e:
-            print(f"❌ Model {model_name} failed:", e)
-            continue
-
-    if not reply:
-        reply = "⚠ AI is busy. Try again."
+    except Exception as e:
+        reply = "⚠ AI error. Try again."
 
     return jsonify({"reply": reply})
 @app.route("/api/sensor-feed")
