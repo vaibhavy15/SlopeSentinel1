@@ -867,4 +867,11 @@ def toggle_user(uid):
 def not_found(e): return render_template("404.html"), 404
 @app.errorhandler(500)
 def server_error(e): return render_template("404.html", code=500, msg="Internal server error."), 500
-
+@app.route("/health", methods=["GET"])
+def health():
+    return  {
+        "message": "OK",
+    }
+# if __name__ == "__main__":
+#     setup_database()
+#     app.run()
