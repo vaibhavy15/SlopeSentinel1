@@ -478,40 +478,62 @@ def api_predict():
 @app.route("/xai")
 @login_required
 def xai():
-    conn = get_db(); cur = conn.cursor()
-    cur.execute("""
-        SELECT id,site_id,risk_label,risk_score,slope_angle,rainfall,
-               rock_density,crack_length,groundwater,blasting,seismic,bench_height,
-               excavation,temperature,top_feature,created_at
-        FROM predictions WHERE user_id=%s ORDER BY created_at DESC LIMIT 30
-    """, (session["user_id"],))
-    preds = cur.fetchall()
-    cur.execute("""
-        SELECT top_feature, COUNT(*) AS cnt FROM predictions
-        WHERE user_id=%s AND top_feature IS NOT NULL
-        GROUP BY top_feature ORDER BY cnt DESC LIMIT 5
-    """, (session["user_id"],))
-    top_features = cur.fetchall(); cur.close(); conn.close()
-    fi_sorted = sorted(FEATURE_IMPORTANCE.items(), key=lambda x: -x[1])
-    return render_template("xai.html", preds=preds, fi_sorted=fi_sorted,
-        feature_labels=FEATURE_LABELS,
-        feature_importance_json=safe_json(dict(fi_sorted)), top_features=top_features)
+    try:
+        conn = get_db()
+        cur = conn.cursor()
 
-@app.route("/api/xai/<int:pred_id>")
-@login_required
-def api_xai(pred_id):
-    conn = get_db(); cur = conn.cursor()
-    cur.execute("SELECT * FROM predictions WHERE id=%s AND user_id=%s", (pred_id, session["user_id"]))
-    p = cur.fetchone(); cur.close(); conn.close()
-    if not p: return jsonify({"error":"Not found"}), 404
-    row = {"slope_angle":p["slope_angle"],"rainfall":p["rainfall"],"rock_density":p["rock_density"],
-           "crack_length":p["crack_length"],"groundwater_level":p["groundwater"],"blasting_intensity":p["blasting"],
-           "seismic_activity":p["seismic"],"bench_height":p["bench_height"],"excavation_depth":p["excavation"],
-           "temperature_variation":p["temperature"]}
-    return jsonify({"site_id":p["site_id"],"risk_label":p["risk_label"],"risk_score":p["risk_score"],
-        "explanation":get_explanation(row),"reasons":get_reasons(p["risk_level"],row),"feature_labels":FEATURE_LABELS})
+        # ✅ Fetch predictions (FIXED QUERY)
+        cur.execute("""
+            SELECT id,site_id,risk_label,risk_score,slope_angle,rainfall,
+                   rock_density,crack_length,
+                   groundwater AS groundwater_level,
+                   blasting AS blasting_intensity,
+                   seismic AS seismic_activity,
+                   bench_height,
+                   excavation AS excavation_depth,
+                   temperature AS temperature_variation,
+                   top_feature,created_at
+            FROM predictions
+            WHERE user_id=%s
+            ORDER BY created_at DESC
+            LIMIT 30
+        """, (session["user_id"],))
 
+        preds = cur.fetchall()
 
+        # ✅ Fetch top contributing features
+        cur.execute("""
+            SELECT top_feature, COUNT(*) AS cnt
+            FROM predictions
+            WHERE user_id=%s AND top_feature IS NOT NULL
+            GROUP BY top_feature
+            ORDER BY cnt DESC
+            LIMIT 5
+        """, (session["user_id"],))
+
+        top_features = cur.fetchall()
+
+        cur.close()
+        conn.close()
+
+        # ✅ Feature importance sorting
+        fi_sorted = sorted(FEATURE_IMPORTANCE.items(), key=lambda x: -x[1])
+
+        # ✅ Debug (optional)
+        print("XAI preds:", preds)
+
+        return render_template(
+            "xai.html",
+            preds=preds,
+            fi_sorted=fi_sorted,
+            feature_labels=FEATURE_LABELS,
+            feature_importance_json=safe_json(dict(fi_sorted)),
+            top_features=top_features
+        )
+
+    except Exception as e:
+        print("❌ XAI ERROR:", e)
+        return render_template("404.html", code=500, msg=str(e)), 500
 # ── SIMULATION ────────────────────────────────────────────────────────────────
 @app.route("/simulate")
 @login_required
