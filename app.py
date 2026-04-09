@@ -1,53 +1,83 @@
 """
-SlopeSentinel — app.py  v2.1  (all bugs fixed)
-=================================================
-Fixes applied:
-  1. model.coef_ → works for LR, RF, XGB universally
-  2. groundwater_level vs groundwater DB column mismatch fixed
-  3. MySQL password always has a fallback default
-  4. SECRET_KEY duplication removed (only app.secret_key used)
-  5. Model loading wrapped in try/except
-  6. setup_database() called immediately after mysql = MySQL(app)
-  7. Feature order always enforced via FEATURE_COLS list
-  8. DB config reads from .env via python-dotenv
-  9. Auto-migration for all new columns
+SlopeSentinel — app.py  v4.0  (NeonDB / serverless PostgreSQL)
+===============================================================
+Changes from v3.0:
+  - Local PostgreSQL  →  NeonDB (serverless PostgreSQL)
+  - Single DATABASE_URL connection string replaces individual PG_* vars
+  - psycopg2 driver kept — NeonDB is 100% PostgreSQL-compatible
+  - NeonDB requires SSL; sslmode=require added to connection options
+  - setup_database() no longer tries to CREATE DATABASE (NeonDB DB is
+    pre-created in the dashboard; we only create tables)
+  - Connection pooling: NeonDB recommends short-lived connections, so the
+    existing per-request get_db() / teardown pattern is ideal
+  - All SQL, table schemas, and application logic unchanged
+
+Setup:
+  1. Create a free project at https://neon.tech
+  2. Copy the connection string from Dashboard → Connection Details
+     (use the psycopg2 / libpq format, NOT the pooled endpoint for
+      schema migrations — but either works for app queries)
+  3. Add to your .env:
+       DATABASE_URL=postgresql://user:password@ep-xxx.us-east-2.aws.neon.tech/neondb?sslmode=require
+  4. pip install psycopg2-binary python-dotenv flask fpdf2 pandas numpy joblib
 """
+
 import os
-from dotenv import load_dotenv        # pip install python-dotenv
-load_dotenv()                          # reads .env file if present
+from dotenv import load_dotenv
+load_dotenv()
 
 from flask import (Flask, render_template, request, redirect,
-                   url_for, session, jsonify, flash, Response, send_file)
-from flask_mysqldb import MySQL
+                   url_for, session, jsonify, flash, Response, send_file, g)
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 from datetime import datetime, timedelta
-import MySQLdb, pandas as pd, numpy as np, joblib
+import psycopg2
+import psycopg2.extras
+import pandas as pd, numpy as np, joblib
 import json, csv, io, secrets, random
 from decimal import Decimal
 from fpdf import FPDF
 
 # ─────────────────────────────────────────────
-# APP — single secret_key, no duplication (Fix #4)
+# APP
 # ─────────────────────────────────────────────
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "slopesentinel-dev-secret-change-me")
 
 # ─────────────────────────────────────────────
-# DB CONFIG — always has fallback defaults (Fix #3 & #8)
+# DB CONFIG  (NeonDB — serverless PostgreSQL)
 # ─────────────────────────────────────────────
-app.config.update({
-    "MYSQL_HOST":        os.environ.get("MYSQL_HOST",     "127.0.0.1"),
-    "MYSQL_PORT":        int(os.environ.get("MYSQL_PORT", "3306")),
-    "MYSQL_USER":        os.environ.get("MYSQL_USER",     "root"),
-    "MYSQL_PASSWORD":    os.environ.get("MYSQL_PASSWORD", "1501"),   # fallback for dev
-    "MYSQL_DB":          os.environ.get("MYSQL_DB",       "slopesentinel"),
-    "MYSQL_CURSORCLASS": "DictCursor",
-})
-mysql = MySQL(app)
+# NeonDB provides a single connection string.
+# Copy it from: Neon Dashboard → your project → Connection Details
+# Example format:
+#   postgresql://alex:AbC123dEf@ep-cool-darkness-123456.us-east-2.aws.neon.tech/dbname?sslmode=require
+DATABASE_URL = os.environ.get(
+    "DATABASE_URL",
+    "postgresql://user:password@ep-xxx.us-east-2.aws.neon.tech/neondb?sslmode=require"
+)
+
+def get_db():
+    """Return a per-request psycopg2 connection (stored on Flask g).
+    NeonDB is serverless — short-lived per-request connections are the
+    recommended pattern; no persistent connection pool needed.
+    """
+    if "db" not in g:
+        g.db = psycopg2.connect(DATABASE_URL)
+        g.db.autocommit = False
+    return g.db
+
+@app.teardown_appcontext
+def close_db(exc=None):
+    db = g.pop("db", None)
+    if db is not None:
+        db.close()
+
+def get_cursor():
+    """Return a RealDictCursor for the current request connection."""
+    return get_db().cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
 # ─────────────────────────────────────────────
-# ML MODEL — safe loading, works for any model (Fix #1 & #5)
+# ML MODEL
 # ─────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -61,10 +91,7 @@ except FileNotFoundError as e:
     scaler = None
 
 # ─────────────────────────────────────────────
-# FEATURE COLS — canonical order, always enforced (Fix #7)
-# DB column names match exactly (Fix #2):
-#   groundwater_level  → input/feature name
-#   groundwater        → DB column name  ← these two are intentionally different
+# FEATURE COLS
 # ─────────────────────────────────────────────
 FEATURE_COLS = [
     "slope_angle", "rainfall", "rock_density", "crack_length",
@@ -86,15 +113,14 @@ FEATURE_LABELS = {
 RISK_LABELS = {0: "safe",     1: "caution",       2: "critical"}
 RISK_NAMES  = {0: "Low Risk", 1: "Moderate Risk",  2: "High Risk"}
 
-# ── Feature importance: works for LR, RF, XGBoost (Fix #1) ──
 def _compute_importance():
     if model is None:
         return {col: round(100/len(FEATURE_COLS), 1) for col in FEATURE_COLS}
-    if hasattr(model, "feature_importances_"):           # RF, XGBoost, Decision Tree
+    if hasattr(model, "feature_importances_"):
         raw = model.feature_importances_
-    elif hasattr(model, "coef_"):                        # Logistic Regression, SVM
+    elif hasattr(model, "coef_"):
         raw = np.abs(model.coef_).mean(axis=0)
-    else:                                                # fallback: equal weights
+    else:
         raw = np.ones(len(FEATURE_COLS))
     total = raw.sum() if raw.sum() > 0 else 1
     return {col: round(float(raw[i] / total) * 100, 1) for i, col in enumerate(FEATURE_COLS)}
@@ -113,136 +139,180 @@ def safe_json(data):
 
 
 # ═══════════════════════════════════════════════
-# DB SETUP  (called immediately below — Fix #6)
+# DB SETUP  (NeonDB)
 # ═══════════════════════════════════════════════
 def setup_database():
+    """
+    Connect to the NeonDB database (already created in the Neon dashboard)
+    and create all tables + seed data on first run.
+
+    NOTE: Unlike local PostgreSQL, NeonDB databases are created through the
+    Neon web dashboard — we never need to CREATE DATABASE here.
+    SSL is handled automatically via the ?sslmode=require in DATABASE_URL.
+    """
     try:
-        db = MySQLdb.connect(
-            host=app.config["MYSQL_HOST"],
-            user=app.config["MYSQL_USER"],
-            passwd=app.config["MYSQL_PASSWORD"],
-            port=app.config["MYSQL_PORT"]
-        )
+        conn = psycopg2.connect(DATABASE_URL)
+        conn.autocommit = False
+        cur = conn.cursor()
+        print("✓ Connected to NeonDB")
     except Exception as e:
-        print(f"⚠ DB connection failed: {e}")
+        print(f"⚠ NeonDB connection failed: {e}")
+        print("  → Check your DATABASE_URL in .env matches the Neon dashboard connection string.")
         return
 
-    cur = db.cursor()
-    cur.execute("CREATE DATABASE IF NOT EXISTS slopesentinel CHARACTER SET utf8mb4")
-    cur.execute("USE slopesentinel")
-
     # ── users ──
-    cur.execute("""CREATE TABLE IF NOT EXISTS users (
-        id            INT AUTO_INCREMENT PRIMARY KEY,
-        full_name     VARCHAR(120) NOT NULL,
-        email         VARCHAR(255) NOT NULL UNIQUE,
-        password_hash TEXT NOT NULL,
-        role          ENUM('engineer','admin') DEFAULT 'engineer',
-        is_active     TINYINT(1) DEFAULT 1,
-        is_verified   TINYINT(1) DEFAULT 0,
-        created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
-        last_login    DATETIME NULL
-    )""")
+    # TINYINT(1) → BOOLEAN  |  AUTO_INCREMENT → SERIAL  |  ENUM → VARCHAR + CHECK
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id            SERIAL PRIMARY KEY,
+            full_name     VARCHAR(120) NOT NULL,
+            email         VARCHAR(255) NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            role          VARCHAR(20)  NOT NULL DEFAULT 'engineer'
+                              CHECK (role IN ('engineer','admin')),
+            is_active     BOOLEAN DEFAULT TRUE,
+            is_verified   BOOLEAN DEFAULT FALSE,
+            created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_login    TIMESTAMP NULL
+        )
+    """)
 
-    # ── predictions  (DB column = groundwater — Fix #2) ──
-    cur.execute("""CREATE TABLE IF NOT EXISTS predictions (
-        id            INT AUTO_INCREMENT PRIMARY KEY,
-        user_id       INT,
-        site_id       VARCHAR(50),
-        slope_angle   FLOAT, rainfall    FLOAT,
-        rock_density  FLOAT, crack_length FLOAT,
-        groundwater   FLOAT,              -- maps from groundwater_level input
-        blasting      FLOAT, seismic     FLOAT,
-        bench_height  FLOAT, excavation  FLOAT, temperature FLOAT,
-        risk_score    FLOAT, risk_level  INT,   risk_label  VARCHAR(20),
-        top_feature   VARCHAR(50),
-        created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
-    )""")
+    # ── predictions ──
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS predictions (
+            id            SERIAL PRIMARY KEY,
+            user_id       INT,
+            site_id       VARCHAR(50),
+            slope_angle   FLOAT, rainfall     FLOAT,
+            rock_density  FLOAT, crack_length FLOAT,
+            groundwater   FLOAT,
+            blasting      FLOAT, seismic      FLOAT,
+            bench_height  FLOAT, excavation   FLOAT, temperature FLOAT,
+            risk_score    FLOAT, risk_level   INT,   risk_label  VARCHAR(20),
+            top_feature   VARCHAR(50),
+            created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+        )
+    """)
 
     # ── alerts ──
-    cur.execute("""CREATE TABLE IF NOT EXISTS alerts (
-        id            INT AUTO_INCREMENT PRIMARY KEY,
-        prediction_id INT NULL,
-        site_id       VARCHAR(50),
-        severity      ENUM('info','warning','critical') DEFAULT 'info',
-        title         VARCHAR(200),
-        message       TEXT,
-        acknowledged  TINYINT(1) DEFAULT 0,
-        created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
-    )""")
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS alerts (
+            id            SERIAL PRIMARY KEY,
+            prediction_id INT NULL,
+            site_id       VARCHAR(50),
+            severity      VARCHAR(20) DEFAULT 'info'
+                              CHECK (severity IN ('info','warning','critical')),
+            title         VARCHAR(200),
+            message       TEXT,
+            acknowledged  BOOLEAN DEFAULT FALSE,
+            created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
 
     # ── activity_log ──
-    cur.execute("""CREATE TABLE IF NOT EXISTS activity_log (
-        id         INT AUTO_INCREMENT PRIMARY KEY,
-        user_id    INT NULL,
-        action     VARCHAR(200),
-        detail     VARCHAR(500),
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )""")
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS activity_log (
+            id         SERIAL PRIMARY KEY,
+            user_id    INT NULL,
+            action     VARCHAR(200),
+            detail     VARCHAR(500),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
 
     # ── chat_history ──
-    cur.execute("""CREATE TABLE IF NOT EXISTS chat_history (
-        id         INT AUTO_INCREMENT PRIMARY KEY,
-        user_id    INT,
-        role       ENUM('user','assistant') DEFAULT 'user',
-        message    TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )""")
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS chat_history (
+            id         SERIAL PRIMARY KEY,
+            user_id    INT,
+            role       VARCHAR(20) DEFAULT 'user'
+                           CHECK (role IN ('user','assistant')),
+            message    TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
 
     # ── seed admin ──
     cur.execute("SELECT id FROM users WHERE email='admin@slopesentinel.com'")
     if not cur.fetchone():
         cur.execute("""INSERT INTO users
-            (full_name,email,password_hash,role,is_active,is_verified)
-            VALUES (%s,%s,%s,%s,1,1)""",
-            ("Site Admin","admin@slopesentinel.com",
-             generate_password_hash("Admin@123"),"admin"))
+            (full_name, email, password_hash, role, is_active, is_verified)
+            VALUES (%s,%s,%s,%s,TRUE,TRUE)""",
+            ("Site Admin", "admin@slopesentinel.com",
+             generate_password_hash("Admin@123"), "admin"))
 
     # ── seed engineer ──
     cur.execute("SELECT id FROM users WHERE email='engineer@mine-site.com'")
     if not cur.fetchone():
         cur.execute("""INSERT INTO users
-            (full_name,email,password_hash,role,is_active,is_verified)
-            VALUES (%s,%s,%s,%s,1,1)""",
-            ("John Engineer","engineer@mine-site.com",
-             generate_password_hash("Engineer@123"),"engineer"))
+            (full_name, email, password_hash, role, is_active, is_verified)
+            VALUES (%s,%s,%s,%s,TRUE,TRUE)""",
+            ("John Engineer", "engineer@mine-site.com",
+             generate_password_hash("Engineer@123"), "engineer"))
 
     # ── seed demo alert ──
     cur.execute("SELECT id FROM alerts LIMIT 1")
     if not cur.fetchone():
-        cur.execute("""INSERT INTO alerts (site_id,severity,title,message)
+        cur.execute("""INSERT INTO alerts (site_id, severity, title, message)
             VALUES (%s,%s,%s,%s)""",
-            ("Eastern Haul Road","critical","Critical Rockfall Warning",
+            ("Eastern Haul Road", "critical", "Critical Rockfall Warning",
              "High risk at Eastern Haul Road. Slope stability below threshold."))
 
-    # ── Auto-migrations: add new columns to existing DBs safely (Fix #9) ──
+    # ── Auto-migrations: add new columns to existing DBs safely ──
+    # PostgreSQL: use information_schema instead of SHOW COLUMNS
     migrations = [
         ("predictions", "top_feature",
             "ALTER TABLE predictions ADD COLUMN top_feature VARCHAR(50) NULL"),
         ("users", "is_verified",
-            "ALTER TABLE users ADD COLUMN is_verified TINYINT(1) NOT NULL DEFAULT 0"),
+            "ALTER TABLE users ADD COLUMN is_verified BOOLEAN NOT NULL DEFAULT FALSE"),
         ("users", "is_active",
-            "ALTER TABLE users ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1"),
+            "ALTER TABLE users ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE"),
         ("alerts", "prediction_id",
             "ALTER TABLE alerts ADD COLUMN prediction_id INT NULL"),
     ]
     for tbl, col, sql in migrations:
         try:
-            cur.execute(f"SHOW COLUMNS FROM `{tbl}` LIKE %s", (col,))
+            cur.execute("""
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = %s AND column_name = %s
+            """, (tbl, col))
             if not cur.fetchone():
                 cur.execute(sql)
                 print(f"  ✓ Migration: {tbl}.{col} added")
-        except Exception as me:
-            pass   # column already exists or table not yet created — both fine
+        except Exception:
+            pass
 
-    db.commit()
+    # ── Type-fix migrations: convert smallint columns to BOOLEAN ──
+    # Fixes "operator does not exist: smallint = boolean" error when the
+    # table was originally created via a MySQL-sourced schema (TINYINT → smallint).
+    type_migrations = [
+        ("alerts", "acknowledged",
+            "ALTER TABLE alerts ALTER COLUMN acknowledged TYPE BOOLEAN USING acknowledged::boolean"),
+        ("users",  "is_active",
+            "ALTER TABLE users  ALTER COLUMN is_active  TYPE BOOLEAN USING is_active::boolean"),
+        ("users",  "is_verified",
+            "ALTER TABLE users  ALTER COLUMN is_verified TYPE BOOLEAN USING is_verified::boolean"),
+    ]
+    for tbl, col, sql in type_migrations:
+        try:
+            cur.execute("""
+                SELECT data_type FROM information_schema.columns
+                WHERE table_name = %s AND column_name = %s
+            """, (tbl, col))
+            row = cur.fetchone()
+            if row and row[0] in ("smallint", "integer", "bigint"):
+                cur.execute(sql)
+                print(f"  ✓ Type migration: {tbl}.{col} smallint → boolean")
+        except Exception as me:
+            print(f"  ⚠ Type migration skipped ({tbl}.{col}): {me}")
+
+    conn.commit()
     cur.close()
-    db.close()
+    conn.close()
     print("✓ Database ready")
 
 
-# ─── Call setup immediately after MySQL init (Fix #6) ───
 with app.app_context():
     setup_database()
 
@@ -270,10 +340,10 @@ def admin_required(f):
 
 def log_activity(action, detail=""):
     try:
-        cur = mysql.connection.cursor()
-        cur.execute("INSERT INTO activity_log (user_id,action,detail) VALUES (%s,%s,%s)",
+        cur = get_cursor()
+        cur.execute("INSERT INTO activity_log (user_id, action, detail) VALUES (%s,%s,%s)",
                     (session.get("user_id"), action, detail))
-        mysql.connection.commit()
+        get_db().commit()
         cur.close()
     except Exception:
         pass
@@ -283,10 +353,8 @@ def log_activity(action, detail=""):
 # ML HELPERS
 # ═══════════════════════════════════════════════
 def predict_row(row_dict):
-    """Predict using enforced FEATURE_COLS order (Fix #7)."""
     if model is None or scaler is None:
         raise RuntimeError("ML model not loaded. Check best_model.pkl and scaler.pkl exist.")
-    # Enforce exact feature order — always (Fix #7)
     values = np.array([float(row_dict.get(col, 0)) for col in FEATURE_COLS]).reshape(1, -1)
     scaled = scaler.transform(values)
     pred   = int(model.predict(scaled)[0])
@@ -341,19 +409,19 @@ def login():
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
         pw    = request.form.get("password", "")
-        cur   = mysql.connection.cursor()
-        cur.execute("SELECT * FROM users WHERE email=%s", (email,))
+        cur   = get_cursor()
+        cur.execute("SELECT * FROM users WHERE email = %s", (email,))
         u = cur.fetchone(); cur.close()
-        if not u:                                        error = "No account with that email."
+        if not u:                                         error = "No account with that email."
         elif not check_password_hash(u["password_hash"], pw): error = "Incorrect password."
-        elif not u["is_verified"]:                       error = "Pending admin approval."
-        elif not u["is_active"]:                         error = "Account deactivated."
+        elif not u["is_verified"]:                        error = "Pending admin approval."
+        elif not u["is_active"]:                          error = "Account deactivated."
         else:
             session.update({"user_id":   u["id"],   "role":      u["role"],
                             "user_name": u["full_name"], "email": u["email"]})
-            cur = mysql.connection.cursor()
-            cur.execute("UPDATE users SET last_login=NOW() WHERE id=%s", (u["id"],))
-            mysql.connection.commit(); cur.close()
+            cur = get_cursor()
+            cur.execute("UPDATE users SET last_login = NOW() WHERE id = %s", (u["id"],))
+            get_db().commit(); cur.close()
             log_activity("login", request.remote_addr)
             return redirect(url_for("dashboard"))
     return render_template("login.html", error=error)
@@ -369,13 +437,15 @@ def register():
         elif len(pw) < 6:                   error = "Password must be ≥ 6 characters."
         else:
             try:
-                cur = mysql.connection.cursor()
-                cur.execute("INSERT INTO users (full_name,email,password_hash) VALUES (%s,%s,%s)",
-                            (name, email, generate_password_hash(pw)))
-                mysql.connection.commit(); cur.close()
+                cur = get_cursor()
+                cur.execute(
+                    "INSERT INTO users (full_name, email, password_hash) VALUES (%s,%s,%s)",
+                    (name, email, generate_password_hash(pw)))
+                get_db().commit(); cur.close()
                 flash("Account created! Awaiting admin approval.", "success")
                 return redirect(url_for("login"))
             except Exception:
+                get_db().rollback()
                 error = "Email already registered."
     return render_template("register.html", error=error)
 
@@ -393,24 +463,37 @@ def logout():
 @app.route("/dashboard")
 @login_required
 def dashboard():
-    cur = mysql.connection.cursor()
-    cur.execute("SELECT COUNT(*) AS cnt FROM predictions WHERE user_id=%s", (session["user_id"],))
+    cur = get_cursor()
+    cur.execute("SELECT COUNT(*) AS cnt FROM predictions WHERE user_id = %s",
+                (session["user_id"],))
     pred_count = cur.fetchone()["cnt"]
-    cur.execute("SELECT COUNT(*) AS cnt FROM alerts WHERE acknowledged=0")
+
+    cur.execute("SELECT COUNT(*) AS cnt FROM alerts WHERE acknowledged = FALSE")
     alert_count = cur.fetchone()["cnt"]
-    cur.execute("SELECT risk_label,COUNT(*) AS cnt FROM predictions WHERE user_id=%s GROUP BY risk_label",
-                (session["user_id"],))
-    risk_dist = {r["risk_label"]: int(r["cnt"]) for r in cur.fetchall()}
-    cur.execute("""SELECT DATE_FORMAT(created_at,'%%b') AS month,
-        SUM(risk_level=0) AS safe, SUM(risk_level=1) AS caution, SUM(risk_level=2) AS critical
-        FROM predictions WHERE user_id=%s AND created_at>=DATE_SUB(NOW(),INTERVAL 6 MONTH)
-        GROUP BY DATE_FORMAT(created_at,'%%b'),MONTH(created_at) ORDER BY MONTH(created_at)""",
+
+    cur.execute("""SELECT risk_label, COUNT(*) AS cnt
+        FROM predictions WHERE user_id = %s GROUP BY risk_label""",
         (session["user_id"],))
+    risk_dist = {r["risk_label"]: int(r["cnt"]) for r in cur.fetchall()}
+
+    # PostgreSQL: TO_CHAR for month abbreviation, EXTRACT for ordering
+    cur.execute("""
+        SELECT TO_CHAR(created_at, 'Mon') AS month,
+               SUM(CASE WHEN risk_level=0 THEN 1 ELSE 0 END) AS safe,
+               SUM(CASE WHEN risk_level=1 THEN 1 ELSE 0 END) AS caution,
+               SUM(CASE WHEN risk_level=2 THEN 1 ELSE 0 END) AS critical
+        FROM predictions
+        WHERE user_id = %s AND created_at >= NOW() - INTERVAL '6 months'
+        GROUP BY TO_CHAR(created_at, 'Mon'), EXTRACT(MONTH FROM created_at)
+        ORDER BY EXTRACT(MONTH FROM created_at)
+    """, (session["user_id"],))
     trend_rows = cur.fetchall()
-    cur.execute("SELECT * FROM predictions WHERE user_id=%s ORDER BY created_at DESC LIMIT 5",
-                (session["user_id"],))
+
+    cur.execute("""SELECT * FROM predictions WHERE user_id = %s
+        ORDER BY created_at DESC LIMIT 5""", (session["user_id"],))
     recent_preds = cur.fetchall()
     cur.close()
+
     return render_template("dashboard.html",
         user={"full_name": session["user_name"], "role": session["role"]},
         pred_count=pred_count, alert_count=alert_count,
@@ -438,13 +521,12 @@ def upload_page():
                 if missing:
                     error = f"Missing columns: {', '.join(missing)}"
                 else:
-                    df     = df[FEATURE_COLS].head(100)   # enforce order (Fix #7)
-                    # Enforce exact FEATURE_COLS order for scaling
+                    df     = df[FEATURE_COLS].head(100)
                     scaled = scaler.transform(df[FEATURE_COLS])
                     preds  = model.predict(scaled)
                     probas = model.predict_proba(scaled)
 
-                    cur = mysql.connection.cursor()
+                    cur = get_cursor()
                     for i, (row, pred, proba) in enumerate(
                             zip(df.itertuples(index=False), preds, probas)):
                         sid   = f"SITE-{i+1:03d}"
@@ -455,23 +537,26 @@ def upload_page():
                         top_f = expl[0]["feature"]
                         reasons = get_reasons(int(pred), rd)
 
-                        # Insert — groundwater_level input → groundwater DB col (Fix #2)
                         cur.execute("""INSERT INTO predictions
-                            (user_id,site_id,slope_angle,rainfall,rock_density,crack_length,
-                             groundwater,blasting,seismic,bench_height,excavation,temperature,
-                             risk_score,risk_level,risk_label,top_feature)
-                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                            (user_id, site_id, slope_angle, rainfall, rock_density,
+                             crack_length, groundwater, blasting, seismic, bench_height,
+                             excavation, temperature, risk_score, risk_level, risk_label,
+                             top_feature)
+                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                            RETURNING id""",
                             (session["user_id"], sid,
-                             row.slope_angle, row.rainfall, row.rock_density, row.crack_length,
-                             row.groundwater_level,        # ← input col  →  DB col groundwater
+                             row.slope_angle, row.rainfall, row.rock_density,
+                             row.crack_length, row.groundwater_level,
                              row.blasting_intensity, row.seismic_activity,
-                             row.bench_height, row.excavation_depth, row.temperature_variation,
+                             row.bench_height, row.excavation_depth,
+                             row.temperature_variation,
                              score, int(pred), lbl, top_f))
-                        pid = cur.lastrowid
+                        # PostgreSQL: use RETURNING id instead of lastrowid
+                        pid = cur.fetchone()["id"]
 
                         if int(pred) == 2:
                             cur.execute("""INSERT INTO alerts
-                                (prediction_id,site_id,severity,title,message)
+                                (prediction_id, site_id, severity, title, message)
                                 VALUES (%s,%s,'critical',%s,%s)""",
                                 (pid, sid, f"Critical Risk at {sid}",
                                  f"AI flagged critical rockfall risk ({score}%). "
@@ -484,10 +569,11 @@ def upload_page():
                             "top_feature": FEATURE_LABELS[top_f],
                             "reason": reasons[0], "pred_id": pid
                         })
-                    mysql.connection.commit(); cur.close()
+                    get_db().commit(); cur.close()
                     log_activity("upload", f"{len(results)} predictions")
                     flash(f"✓ {len(results)} predictions generated.", "success")
             except Exception as e:
+                get_db().rollback()
                 error = f"Processing error: {str(e)}"
     return render_template("upload.html", results=results, error=error,
                            feature_cols=FEATURE_COLS)
@@ -496,29 +582,30 @@ def upload_page():
 @login_required
 def api_predict():
     try:
-        # Always enforce feature order (Fix #7)
         data  = {col: float(request.form.get(col, 0)) for col in FEATURE_COLS}
         pred, score, proba = predict_row(data)
-        expl  = get_explanation(data)
+        expl    = get_explanation(data)
         reasons = get_reasons(pred, data)
-        top_f = expl[0]["feature"] if expl else ""
-        cur = mysql.connection.cursor()
+        top_f   = expl[0]["feature"] if expl else ""
+
+        cur = get_cursor()
         cur.execute("""INSERT INTO predictions
-            (user_id,site_id,slope_angle,rainfall,rock_density,crack_length,
-             groundwater,blasting,seismic,bench_height,excavation,temperature,
-             risk_score,risk_level,risk_label,top_feature)
+            (user_id, site_id, slope_angle, rainfall, rock_density, crack_length,
+             groundwater, blasting, seismic, bench_height, excavation, temperature,
+             risk_score, risk_level, risk_label, top_feature)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
             (session["user_id"], "Manual",
              data["slope_angle"],    data["rainfall"],      data["rock_density"],
-             data["crack_length"],   data["groundwater_level"],  # → groundwater col
+             data["crack_length"],   data["groundwater_level"],
              data["blasting_intensity"], data["seismic_activity"],
-             data["bench_height"],   data["excavation_depth"],   data["temperature_variation"],
+             data["bench_height"],   data["excavation_depth"], data["temperature_variation"],
              score, pred, RISK_LABELS[pred], top_f))
         if pred == 2:
-            cur.execute("""INSERT INTO alerts (severity,title,message)
+            cur.execute("""INSERT INTO alerts (severity, title, message)
                 VALUES ('critical','Critical Manual Prediction',
                 'Manual input flagged critical rockfall risk.')""")
-        mysql.connection.commit(); cur.close()
+        get_db().commit(); cur.close()
+
         return jsonify({
             "risk_level": pred, "risk_label": RISK_LABELS[pred],
             "risk_name": RISK_NAMES[pred], "score": score,
@@ -538,17 +625,19 @@ def api_predict():
 @app.route("/xai")
 @login_required
 def xai():
-    cur = mysql.connection.cursor()
-    cur.execute("""SELECT id,site_id,risk_label,risk_score,slope_angle,rainfall,
-        rock_density,crack_length,groundwater,blasting,seismic,bench_height,
-        excavation,temperature,top_feature,created_at
-        FROM predictions WHERE user_id=%s ORDER BY created_at DESC LIMIT 30""",
+    cur = get_cursor()
+    cur.execute("""SELECT id, site_id, risk_label, risk_score, slope_angle, rainfall,
+        rock_density, crack_length, groundwater, blasting, seismic, bench_height,
+        excavation, temperature, top_feature, created_at
+        FROM predictions WHERE user_id = %s ORDER BY created_at DESC LIMIT 30""",
         (session["user_id"],))
     preds = cur.fetchall()
-    cur.execute("""SELECT top_feature,COUNT(*) AS cnt FROM predictions
-        WHERE user_id=%s AND top_feature IS NOT NULL
+
+    cur.execute("""SELECT top_feature, COUNT(*) AS cnt FROM predictions
+        WHERE user_id = %s AND top_feature IS NOT NULL
         GROUP BY top_feature ORDER BY cnt DESC LIMIT 5""", (session["user_id"],))
     top_features = cur.fetchall(); cur.close()
+
     fi_sorted = sorted(FEATURE_IMPORTANCE.items(), key=lambda x: -x[1])
     return render_template("xai.html", preds=preds, fi_sorted=fi_sorted,
         feature_labels=FEATURE_LABELS,
@@ -558,18 +647,18 @@ def xai():
 @app.route("/api/xai/<int:pred_id>")
 @login_required
 def api_xai(pred_id):
-    cur = mysql.connection.cursor()
-    cur.execute("SELECT * FROM predictions WHERE id=%s AND user_id=%s",
+    cur = get_cursor()
+    cur.execute("SELECT * FROM predictions WHERE id = %s AND user_id = %s",
                 (pred_id, session["user_id"]))
     p = cur.fetchone(); cur.close()
     if not p: return jsonify({"error": "Not found"}), 404
-    # Map DB col names back to FEATURE_COLS names (Fix #2)
+
     row = {
         "slope_angle":          p["slope_angle"],
         "rainfall":             p["rainfall"],
         "rock_density":         p["rock_density"],
         "crack_length":         p["crack_length"],
-        "groundwater_level":    p["groundwater"],   # DB=groundwater → key=groundwater_level
+        "groundwater_level":    p["groundwater"],
         "blasting_intensity":   p["blasting"],
         "seismic_activity":     p["seismic"],
         "bench_height":         p["bench_height"],
@@ -601,7 +690,6 @@ def simulate():
 @login_required
 def api_simulate():
     try:
-        # Enforce order (Fix #7)
         data = {col: float(request.json.get(col, 0)) for col in FEATURE_COLS}
         pred, score, proba = predict_row(data)
         return jsonify({
@@ -623,24 +711,29 @@ def api_simulate():
 @app.route("/analysis")
 @login_required
 def analysis():
-    cur = mysql.connection.cursor()
-    cur.execute("""SELECT risk_label,COUNT(*) AS cnt,
-        AVG(risk_score) AS avg_score,AVG(slope_angle) AS avg_slope
-        FROM predictions WHERE user_id=%s GROUP BY risk_label""", (session["user_id"],))
+    cur = get_cursor()
+    cur.execute("""SELECT risk_label, COUNT(*) AS cnt,
+        AVG(risk_score) AS avg_score, AVG(slope_angle) AS avg_slope
+        FROM predictions WHERE user_id = %s GROUP BY risk_label""",
+        (session["user_id"],))
     stats = cur.fetchall()
-    cur.execute("""SELECT id,site_id,risk_label,risk_score,slope_angle,rainfall,
-        seismic,top_feature,created_at
-        FROM predictions WHERE user_id=%s ORDER BY created_at DESC LIMIT 50""",
+
+    cur.execute("""SELECT id, site_id, risk_label, risk_score, slope_angle, rainfall,
+        seismic, top_feature, created_at
+        FROM predictions WHERE user_id = %s ORDER BY created_at DESC LIMIT 50""",
         (session["user_id"],))
     history = cur.fetchall()
-    cur.execute("""SELECT slope_angle,rainfall,seismic,risk_level,risk_label,risk_score
-        FROM predictions WHERE user_id=%s ORDER BY created_at DESC LIMIT 200""",
+
+    cur.execute("""SELECT slope_angle, rainfall, seismic, risk_level, risk_label, risk_score
+        FROM predictions WHERE user_id = %s ORDER BY created_at DESC LIMIT 200""",
         (session["user_id"],))
     scatter_data = cur.fetchall()
-    cur.execute("""SELECT risk_level,COUNT(*) AS cnt FROM predictions
-        WHERE user_id=%s GROUP BY risk_level""", (session["user_id"],))
+
+    cur.execute("""SELECT risk_level, COUNT(*) AS cnt FROM predictions
+        WHERE user_id = %s GROUP BY risk_level""", (session["user_id"],))
     risk_counts = {r["risk_level"]: int(r["cnt"]) for r in cur.fetchall()}
     cur.close()
+
     return render_template("analysis.html",
         stats=stats, history=history,
         scatter_json=safe_json([dict(r) for r in scatter_data]),
@@ -655,27 +748,27 @@ def analysis():
 @app.route("/alerts")
 @login_required
 def alerts():
-    cur = mysql.connection.cursor()
+    cur = get_cursor()
     cur.execute("SELECT * FROM alerts ORDER BY created_at DESC")
     all_alerts = cur.fetchall()
-    cur.execute("SELECT COUNT(*) AS cnt FROM alerts WHERE acknowledged=0")
+    cur.execute("SELECT COUNT(*) AS cnt FROM alerts WHERE acknowledged = FALSE")
     unread = cur.fetchone()["cnt"]; cur.close()
     return render_template("alerts.html", alerts=all_alerts, unread=unread)
 
 @app.route("/alerts/ack/<int:aid>", methods=["POST"])
 @login_required
 def ack_alert(aid):
-    cur = mysql.connection.cursor()
-    cur.execute("UPDATE alerts SET acknowledged=1 WHERE id=%s", (aid,))
-    mysql.connection.commit(); cur.close()
+    cur = get_cursor()
+    cur.execute("UPDATE alerts SET acknowledged = TRUE WHERE id = %s", (aid,))
+    get_db().commit(); cur.close()
     return jsonify({"ok": True})
 
 @app.route("/alerts/ack-all", methods=["POST"])
 @login_required
 def ack_all_alerts():
-    cur = mysql.connection.cursor()
-    cur.execute("UPDATE alerts SET acknowledged=1")
-    mysql.connection.commit(); cur.close()
+    cur = get_cursor()
+    cur.execute("UPDATE alerts SET acknowledged = TRUE")
+    get_db().commit(); cur.close()
     return jsonify({"ok": True})
 
 
@@ -685,9 +778,9 @@ def ack_all_alerts():
 @app.route("/map")
 @login_required
 def map_view():
-    cur = mysql.connection.cursor()
-    cur.execute("""SELECT site_id,risk_label,risk_score,slope_angle,rainfall,seismic
-        FROM predictions WHERE user_id=%s ORDER BY created_at DESC""",
+    cur = get_cursor()
+    cur.execute("""SELECT site_id, risk_label, risk_score, slope_angle, rainfall, seismic
+        FROM predictions WHERE user_id = %s ORDER BY created_at DESC""",
         (session["user_id"],))
     preds = cur.fetchall(); cur.close()
     return render_template("map.html", predictions=safe_json([dict(p) for p in preds]))
@@ -699,8 +792,8 @@ def map_view():
 @app.route("/report/<int:pred_id>")
 @login_required
 def generate_report(pred_id):
-    cur = mysql.connection.cursor()
-    cur.execute("SELECT * FROM predictions WHERE id=%s AND user_id=%s",
+    cur = get_cursor()
+    cur.execute("SELECT * FROM predictions WHERE id = %s AND user_id = %s",
                 (pred_id, session["user_id"]))
     p = cur.fetchone(); cur.close()
     if not p:
@@ -773,8 +866,8 @@ def generate_report(pred_id):
 @app.route("/report/bulk")
 @login_required
 def generate_bulk_report():
-    cur = mysql.connection.cursor()
-    cur.execute("""SELECT * FROM predictions WHERE user_id=%s
+    cur = get_cursor()
+    cur.execute("""SELECT * FROM predictions WHERE user_id = %s
         ORDER BY created_at DESC LIMIT 20""", (session["user_id"],))
     preds = cur.fetchall(); cur.close()
     if not preds:
@@ -839,9 +932,9 @@ CHAT_KB = {
 @app.route("/chatbot")
 @login_required
 def chatbot():
-    cur = mysql.connection.cursor()
-    cur.execute("""SELECT role,message,created_at FROM chat_history
-        WHERE user_id=%s ORDER BY created_at DESC LIMIT 20""", (session["user_id"],))
+    cur = get_cursor()
+    cur.execute("""SELECT role, message, created_at FROM chat_history
+        WHERE user_id = %s ORDER BY created_at DESC LIMIT 20""", (session["user_id"],))
     history = list(reversed(cur.fetchall())); cur.close()
     return render_template("chatbot.html", history=history)
 
@@ -862,12 +955,12 @@ def api_chat():
                      "parameters and outputs Safe, Caution, or Critical.")
         else:
             reply = "I'm not sure about that. Try: 'rainfall', 'slope angle', 'critical risk', 'accuracy', or type 'help'."
-    cur = mysql.connection.cursor()
-    cur.execute("INSERT INTO chat_history (user_id,role,message) VALUES (%s,'user',%s)",
+    cur = get_cursor()
+    cur.execute("INSERT INTO chat_history (user_id, role, message) VALUES (%s,'user',%s)",
                 (session["user_id"], msg))
-    cur.execute("INSERT INTO chat_history (user_id,role,message) VALUES (%s,'assistant',%s)",
+    cur.execute("INSERT INTO chat_history (user_id, role, message) VALUES (%s,'assistant',%s)",
                 (session["user_id"], reply))
-    mysql.connection.commit(); cur.close()
+    get_db().commit(); cur.close()
     return jsonify({"reply": reply})
 
 @app.route("/api/sensor-feed")
@@ -892,10 +985,11 @@ def api_sensor_feed():
 @app.route("/export")
 @login_required
 def export():
-    cur = mysql.connection.cursor()
-    cur.execute("""SELECT site_id,slope_angle,rainfall,rock_density,crack_length,
-        seismic,risk_score,risk_label,top_feature,created_at
-        FROM predictions WHERE user_id=%s ORDER BY created_at DESC""", (session["user_id"],))
+    cur = get_cursor()
+    cur.execute("""SELECT site_id, slope_angle, rainfall, rock_density, crack_length,
+        seismic, risk_score, risk_label, top_feature, created_at
+        FROM predictions WHERE user_id = %s ORDER BY created_at DESC""",
+        (session["user_id"],))
     rows = cur.fetchall(); cur.close()
     si = io.StringIO()
     writer = csv.DictWriter(si, fieldnames=rows[0].keys() if rows else [])
@@ -912,16 +1006,16 @@ def export():
 @login_required
 @admin_required
 def admin_panel():
-    cur = mysql.connection.cursor()
-    cur.execute("""SELECT id,full_name,email,role,is_active,is_verified,created_at,last_login
-        FROM users ORDER BY is_verified ASC, created_at DESC""")
+    cur = get_cursor()
+    cur.execute("""SELECT id, full_name, email, role, is_active, is_verified,
+        created_at, last_login FROM users ORDER BY is_verified ASC, created_at DESC""")
     users = cur.fetchall()
-    cur.execute("SELECT COUNT(*) AS cnt FROM alerts WHERE acknowledged=0")
+    cur.execute("SELECT COUNT(*) AS cnt FROM alerts WHERE acknowledged = FALSE")
     alert_count = cur.fetchone()["cnt"]
     cur.execute("SELECT COUNT(*) AS cnt FROM predictions")
     total_preds = cur.fetchone()["cnt"]
-    cur.execute("""SELECT a.*,u.full_name AS actor_name FROM activity_log a
-        LEFT JOIN users u ON a.user_id=u.id ORDER BY a.created_at DESC LIMIT 30""")
+    cur.execute("""SELECT a.*, u.full_name AS actor_name FROM activity_log a
+        LEFT JOIN users u ON a.user_id = u.id ORDER BY a.created_at DESC LIMIT 30""")
     activity = cur.fetchall()
     cur.execute("SELECT * FROM alerts ORDER BY created_at DESC LIMIT 20")
     sys_alerts = cur.fetchall(); cur.close()
@@ -932,10 +1026,10 @@ def admin_panel():
 @login_required
 @admin_required
 def approve(uid):
-    cur = mysql.connection.cursor()
-    cur.execute("UPDATE users SET is_verified=1,is_active=1 WHERE id=%s", (uid,))
-    mysql.connection.commit()
-    cur.execute("SELECT full_name FROM users WHERE id=%s", (uid,))
+    cur = get_cursor()
+    cur.execute("UPDATE users SET is_verified = TRUE, is_active = TRUE WHERE id = %s", (uid,))
+    get_db().commit()
+    cur.execute("SELECT full_name FROM users WHERE id = %s", (uid,))
     u = cur.fetchone(); cur.close()
     log_activity("approve_user", u["full_name"] if u else str(uid))
     flash(f"✓ Access approved for {u['full_name'] if u else uid}.", "success")
@@ -945,10 +1039,10 @@ def approve(uid):
 @login_required
 @admin_required
 def reject(uid):
-    cur = mysql.connection.cursor()
-    cur.execute("UPDATE users SET is_verified=0,is_active=0 WHERE id=%s", (uid,))
-    mysql.connection.commit()
-    cur.execute("SELECT full_name FROM users WHERE id=%s", (uid,))
+    cur = get_cursor()
+    cur.execute("UPDATE users SET is_verified = FALSE, is_active = FALSE WHERE id = %s", (uid,))
+    get_db().commit()
+    cur.execute("SELECT full_name FROM users WHERE id = %s", (uid,))
     u = cur.fetchone(); cur.close()
     flash(f"Rejected {u['full_name'] if u else uid}.", "warning")
     return redirect(url_for("admin_panel"))
@@ -960,9 +1054,9 @@ def delete_user(uid):
     if uid == session["user_id"]:
         flash("Cannot delete yourself.", "danger")
         return redirect(url_for("admin_panel"))
-    cur = mysql.connection.cursor()
-    cur.execute("DELETE FROM users WHERE id=%s", (uid,))
-    mysql.connection.commit(); cur.close()
+    cur = get_cursor()
+    cur.execute("DELETE FROM users WHERE id = %s", (uid,))
+    get_db().commit(); cur.close()
     flash("User deleted.", "danger")
     return redirect(url_for("admin_panel"))
 
@@ -975,14 +1069,15 @@ def invite_user():
     role  = request.form.get("role","engineer")
     temp  = secrets.token_urlsafe(10)
     try:
-        cur = mysql.connection.cursor()
+        cur = get_cursor()
         cur.execute("""INSERT INTO users
-            (full_name,email,password_hash,role,is_active,is_verified)
-            VALUES (%s,%s,%s,%s,1,0)""",
+            (full_name, email, password_hash, role, is_active, is_verified)
+            VALUES (%s,%s,%s,%s,TRUE,FALSE)""",
             (name, email, generate_password_hash(temp), role))
-        mysql.connection.commit(); cur.close()
+        get_db().commit(); cur.close()
         flash(f"Invite for {name}. Temp password: {temp}", "success")
     except Exception as e:
+        get_db().rollback()
         flash(f"Error: {e}", "danger")
     return redirect(url_for("admin_panel"))
 
@@ -992,10 +1087,10 @@ def invite_user():
 def broadcast_alert():
     title   = request.form.get("title",   "System Alert")
     message = request.form.get("message", "")
-    cur = mysql.connection.cursor()
-    cur.execute("""INSERT INTO alerts (site_id,severity,title,message)
+    cur = get_cursor()
+    cur.execute("""INSERT INTO alerts (site_id, severity, title, message)
         VALUES ('System','warning',%s,%s)""", (title, message))
-    mysql.connection.commit(); cur.close()
+    get_db().commit(); cur.close()
     flash("Alert broadcast.", "success")
     return redirect(url_for("admin_panel"))
 
@@ -1005,10 +1100,10 @@ def broadcast_alert():
 def toggle_user(uid):
     if uid == session["user_id"]:
         return jsonify({"error": "Cannot deactivate yourself."}), 400
-    cur = mysql.connection.cursor()
-    cur.execute("UPDATE users SET is_active=NOT is_active WHERE id=%s", (uid,))
-    mysql.connection.commit()
-    cur.execute("SELECT is_active FROM users WHERE id=%s", (uid,))
+    cur = get_cursor()
+    cur.execute("UPDATE users SET is_active = NOT is_active WHERE id = %s", (uid,))
+    get_db().commit()
+    cur.execute("SELECT is_active FROM users WHERE id = %s", (uid,))
     r = cur.fetchone(); cur.close()
     return jsonify({"is_active": bool(r["is_active"])})
 
