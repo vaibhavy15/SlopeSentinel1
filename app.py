@@ -1021,5 +1021,5 @@ def server_error(e): return render_template("404.html",code=500,msg="Internal se
 @app.route("/health")
 def health(): return jsonify({"status":"ok","gemini":GEMINI_AVAILABLE})
 
-if __name__=="__main__":
-    app.run(debug=True,port=5000)
+# if __name__=="__main__":
+#     app.run(debug=True,port=5000)
